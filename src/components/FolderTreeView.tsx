@@ -29,6 +29,7 @@ interface FolderTreeViewProps {
   onDelete: (path: string[], name: string) => void;
   onDropOnNode: (destPath: string[], e: React.DragEvent) => void;
   onShowProperties: (path: string[], node: FileSystemNode) => void;
+  onEmptyTrash?: () => void;
 }
 
 export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
@@ -44,6 +45,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
   onDelete,
   onDropOnNode,
   onShowProperties,
+  onEmptyTrash,
 }) => {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -199,37 +201,56 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                 </button>
               )}
 
-              <button
-                onClick={() => {
-                  const name = prompt('Enter new folder name:');
-                  if (name && name.trim()) {
-                    onCreateFolder(contextMenu.path, name.trim());
-                  }
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
-              >
-                <FolderPlus className="w-4 h-4 text-amber-500" />
-                <span>New Subfolder</span>
-              </button>
+              {contextMenu.node.type === 'folder' &&
+                !contextMenu.node.isTrash &&
+                contextMenu.node.name.toLowerCase() !== 'trash' && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const name = prompt('Enter new folder name:');
+                        if (name && name.trim()) {
+                          onCreateFolder(contextMenu.path, name.trim());
+                        }
+                        setContextMenu(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
+                    >
+                      <FolderPlus className="w-4 h-4 text-amber-500" />
+                      <span>New Subfolder</span>
+                    </button>
 
-              <button
-                onClick={() => {
-                  const name = prompt('Enter new file name (e.g. notes.md):');
-                  if (name && name.trim()) {
-                    onCreateFile(contextMenu.path, name.trim());
-                  }
-                  setContextMenu(null);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
-              >
-                <FilePlus className="w-4 h-4 text-blue-500" />
-                <span>New File</span>
-              </button>
+                    <button
+                      onClick={() => {
+                        const name = prompt('Enter new file name (e.g. notes.md):');
+                        if (name && name.trim()) {
+                          onCreateFile(contextMenu.path, name.trim());
+                        }
+                        setContextMenu(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
+                    >
+                      <FilePlus className="w-4 h-4 text-blue-500" />
+                      <span>New File</span>
+                    </button>
+                  </>
+                )}
             </>
           )}
 
-          {contextMenu.path.length > 1 && (
+          {contextMenu.node.isTrash || contextMenu.node.name.toLowerCase() === 'trash' ? (
+            onEmptyTrash && (
+              <button
+                onClick={() => {
+                  onEmptyTrash();
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-red-500/10 text-red-500 font-medium cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Empty Trash</span>
+              </button>
+            )
+          ) : contextMenu.path.length > 1 ? (
             <>
               <button
                 onClick={() => {
@@ -261,7 +282,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                 <span>Delete</span>
               </button>
             </>
-          )}
+          ) : null}
 
           <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
 

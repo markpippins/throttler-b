@@ -20,6 +20,7 @@ import { ImportDialog, ExportDialog } from './components/dialogs/ImportExportDia
 import { TextEditorDialog } from './components/dialogs/TextEditorDialog';
 import { WebviewDialog } from './components/dialogs/WebviewDialog';
 import { PropertiesDialog } from './components/dialogs/PropertiesDialog';
+import { ConfirmBatchOperationDialog } from './components/dialogs/ConfirmBatchOperationDialog';
 
 import { VirtualFileSystem, setVfsService } from './services/fileSystemService';
 import { StorageService } from './services/storageService';
@@ -111,6 +112,23 @@ export const App: React.FC = () => {
   const [dialogPreferences, setDialogPreferences] = useState<boolean>(false);
   const [dialogImport, setDialogImport] = useState<boolean>(false);
   const [dialogExport, setDialogExport] = useState<boolean>(false);
+
+  // Large Batch Operations Safety Preferences
+  const [confirmLargeBatchOperations, setConfirmLargeBatchOperations] = useState<boolean>(() =>
+    StorageService.getLocalItem<boolean>('confirm_large_batch_operations', true)
+  );
+  const [largeBatchThreshold, setLargeBatchThreshold] = useState<number>(() =>
+    StorageService.getLocalItem<number>('large_batch_threshold', 10)
+  );
+  const [pendingBatchOperation, setPendingBatchOperation] = useState<{
+    operation: 'move' | 'copy';
+    sourceNames: string[];
+    sourcePath: string[];
+    destPath: string[];
+    targetIndex?: number;
+    isPaste?: boolean;
+    isFromDrop?: boolean;
+  } | null>(null);
 
   const [editorData, setEditorData] = useState<{
     isOpen: boolean;
@@ -271,6 +289,14 @@ export const App: React.FC = () => {
   const pane1Items = useMemo(() => getItemsForPath(pane1Path), [getItemsForPath, pane1Path, rootNode]);
   const pane2Items = useMemo(() => getItemsForPath(pane2Path), [getItemsForPath, pane2Path, rootNode]);
 
+  const trashCount = useMemo(() => {
+    return vfsRef.current.getTrashCount();
+  }, [rootNode]);
+
+  const isCurrentActiveInTrash = useMemo(() => {
+    return vfsRef.current.isTrashPath(currentActivePath);
+  }, [currentActivePath, rootNode]);
+
   // --- Navigation Handlers ---
   const handleNavigatePane = (paneNumber: 1 | 2, newPath: string[]) => {
     if (paneNumber === 1) {
@@ -406,10 +432,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDelete = (path: string[], names: string[]) => {
+  const handleDelete = (path: string[], names: string[], permanent: boolean = false) => {
+    const isInsideTrash = vfsRef.current.isTrashPath(path) || permanent;
     let count = 0;
     for (const name of names) {
-      if (vfsRef.current.deleteItem(path, name)) {
+      if (vfsRef.current.deleteItem(path, name, permanent)) {
         count++;
       }
     }
@@ -417,9 +444,76 @@ export const App: React.FC = () => {
       triggerVfsUpdate();
       if (activePane === 1) setPane1Selected(new Set());
       else setPane2Selected(new Set());
-      addToast('info', `Deleted ${count} item(s)`);
+      SoundService.playFileDelete();
+      if (isInsideTrash) {
+        addToast('info', `Permanently deleted ${count} item(s)`);
+      } else {
+        addToast('info', `Moved ${count} item(s) to Trash`);
+      }
     }
   };
+
+  const handleEmptyTrash = useCallback(() => {
+    const count = vfsRef.current.getTrashCount();
+    if (count === 0) {
+      addToast('info', 'Trash is already empty');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete all ${count} item(s) in the Trash? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const deleted = vfsRef.current.emptyTrash();
+    triggerVfsUpdate();
+    SoundService.playFileDelete();
+    if (activePane === 1) setPane1Selected(new Set());
+    else setPane2Selected(new Set());
+    addToast('info', `Emptied trash (${deleted} item(s) permanently removed)`);
+  }, [activePane]);
+
+  const handleRestoreFromTrash = useCallback((names?: string[]) => {
+    const trash = vfsRef.current.getTrashNode();
+    const itemsToRestore =
+      names && names.length > 0
+        ? names
+        : (trash.children || []).map((c) => c.name);
+
+    if (itemsToRestore.length === 0) {
+      addToast('info', 'No items in Trash to restore');
+      return;
+    }
+
+    let restoredCount = 0;
+    let lastRestoredPath: string[] | null = null;
+    for (const name of itemsToRestore) {
+      const res = vfsRef.current.restoreFromTrash(name);
+      if (res.success) {
+        restoredCount++;
+        if (res.restoredPath) lastRestoredPath = res.restoredPath;
+      }
+    }
+
+    if (restoredCount > 0) {
+      triggerVfsUpdate();
+      SoundService.playFileSelect();
+      if (activePane === 1) setPane1Selected(new Set());
+      else setPane2Selected(new Set());
+      addToast(
+        'success',
+        `Restored ${restoredCount} item(s) back to original location${
+          lastRestoredPath ? ` (/${lastRestoredPath.join('/')})` : ''
+        }`
+      );
+    } else {
+      addToast('error', 'Could not restore selected items');
+    }
+  }, [activePane]);
+
+  const handleOpenTrash = useCallback(() => {
+    const trashPath = [rootNode.name, 'Trash'];
+    handleNavigatePane(activePane, trashPath);
+  }, [activePane, rootNode.name]);
 
   const handleCut = () => {
     const selected = Array.from(currentActiveSelected);
@@ -479,23 +573,14 @@ export const App: React.FC = () => {
     setFileOperationProgress(null);
   }, []);
 
-  const handlePaste = async () => {
-    if (!clipboard || clipboard.itemNames.length === 0) {
-      addToast('warning', 'Clipboard is empty');
-      return;
-    }
-
+  const executePaste = async (
+    items: string[],
+    sourcePath: string[],
+    targetPath: string[],
+    isCut: boolean
+  ) => {
     const operationId = Date.now().toString();
-    const isCut = clipboard.operation === 'cut';
-    const total = clipboard.itemNames.length;
-    const items = [...clipboard.itemNames];
-    const sourcePath = [...clipboard.sourcePath];
-    const targetPath = [...currentActivePath];
-
-    if (sourcePath.join('/') === targetPath.join('/') && isCut) {
-      addToast('info', 'Source and destination folders are the same');
-      return;
-    }
+    const total = items.length;
 
     setFileOperationProgress({
       id: operationId,
@@ -582,28 +667,45 @@ export const App: React.FC = () => {
     }, 3500);
   };
 
-  const handleMoveItems = async (
-    sourceNames: string[],
-    destPath: string[],
-    sourcePath?: string[],
-    targetIndex?: number
-  ) => {
-    const fromPath = sourcePath || currentActivePath;
-    if (sourceNames.length === 0) return;
-
-    // Check same folder reordering
-    if (fromPath.join('/') === destPath.join('/')) {
-      if (targetIndex !== undefined) {
-        const reordered = vfsRef.current.reorderItems(fromPath, sourceNames, targetIndex);
-        if (reordered) {
-          triggerVfsUpdate();
-          SoundService.playFileMove();
-          addToast('info', `Reordered ${sourceNames.length} item(s)`);
-        }
-      }
+  const handlePaste = async () => {
+    if (!clipboard || clipboard.itemNames.length === 0) {
+      addToast('warning', 'Clipboard is empty');
       return;
     }
 
+    const isCut = clipboard.operation === 'cut';
+    const total = clipboard.itemNames.length;
+    const items = [...clipboard.itemNames];
+    const sourcePath = [...clipboard.sourcePath];
+    const targetPath = [...currentActivePath];
+
+    if (sourcePath.join('/') === targetPath.join('/') && isCut) {
+      addToast('info', 'Source and destination folders are the same');
+      return;
+    }
+
+    // Check for large batch confirmation (over threshold items)
+    if (confirmLargeBatchOperations && total > largeBatchThreshold) {
+      setPendingBatchOperation({
+        operation: isCut ? 'move' : 'copy',
+        sourceNames: items,
+        sourcePath,
+        destPath: targetPath,
+        isPaste: true,
+      });
+      return;
+    }
+
+    await executePaste(items, sourcePath, targetPath, isCut);
+  };
+
+  const executeMoveItems = async (
+    sourceNames: string[],
+    destPath: string[],
+    fromPath: string[],
+    targetIndex?: number,
+    isFromDrop: boolean = false
+  ) => {
     const operationId = Date.now().toString();
     const total = sourceNames.length;
     const items = [...sourceNames];
@@ -682,6 +784,25 @@ export const App: React.FC = () => {
 
     if (count > 0) {
       addToast('success', `Moved ${count} item(s) to /${destPath.join('/')}`);
+
+      if (isFromDrop) {
+        const actionData = {
+          id: Date.now().toString(),
+          operation: 'move' as const,
+          sourceNames: items,
+          sourcePath: fromPath,
+          destPath,
+          targetIndex,
+          isSameDrive: true,
+          timestamp: Date.now(),
+        };
+        setLastDropAction(actionData);
+
+        if (lastDropTimerRef.current) clearTimeout(lastDropTimerRef.current);
+        lastDropTimerRef.current = setTimeout(() => {
+          setLastDropAction((prev) => (prev?.id === actionData.id ? null : prev));
+        }, 7000);
+      }
     }
 
     setTimeout(() => {
@@ -689,15 +810,52 @@ export const App: React.FC = () => {
     }, 3500);
   };
 
-  const handleCopyItems = async (
+  const handleMoveItems = async (
     sourceNames: string[],
     destPath: string[],
     sourcePath?: string[],
-    targetIndex?: number
+    targetIndex?: number,
+    isFromDrop: boolean = false
   ) => {
     const fromPath = sourcePath || currentActivePath;
     if (sourceNames.length === 0) return;
 
+    // Check same folder reordering
+    if (fromPath.join('/') === destPath.join('/')) {
+      if (targetIndex !== undefined) {
+        const reordered = vfsRef.current.reorderItems(fromPath, sourceNames, targetIndex);
+        if (reordered) {
+          triggerVfsUpdate();
+          SoundService.playFileMove();
+          addToast('info', `Reordered ${sourceNames.length} item(s)`);
+        }
+      }
+      return;
+    }
+
+    // Check large batch threshold confirmation (over threshold items)
+    if (confirmLargeBatchOperations && sourceNames.length > largeBatchThreshold) {
+      setPendingBatchOperation({
+        operation: 'move',
+        sourceNames,
+        sourcePath: fromPath,
+        destPath,
+        targetIndex,
+        isFromDrop,
+      });
+      return;
+    }
+
+    await executeMoveItems(sourceNames, destPath, fromPath, targetIndex, isFromDrop);
+  };
+
+  const executeCopyItems = async (
+    sourceNames: string[],
+    destPath: string[],
+    fromPath: string[],
+    targetIndex?: number,
+    isFromDrop: boolean = false
+  ) => {
     const operationId = Date.now().toString();
     const total = sourceNames.length;
     const items = [...sourceNames];
@@ -776,11 +934,82 @@ export const App: React.FC = () => {
 
     if (count > 0) {
       addToast('success', `Copied ${count} item(s) to /${destPath.join('/')}`);
+
+      if (isFromDrop) {
+        const actionData = {
+          id: Date.now().toString(),
+          operation: 'copy' as const,
+          sourceNames: items,
+          sourcePath: fromPath,
+          destPath,
+          targetIndex,
+          isSameDrive: false,
+          timestamp: Date.now(),
+        };
+        setLastDropAction(actionData);
+
+        if (lastDropTimerRef.current) clearTimeout(lastDropTimerRef.current);
+        lastDropTimerRef.current = setTimeout(() => {
+          setLastDropAction((prev) => (prev?.id === actionData.id ? null : prev));
+        }, 7000);
+      }
     }
 
     setTimeout(() => {
       setFileOperationProgress((prev) => (prev?.id === operationId ? null : prev));
     }, 3000);
+  };
+
+  const handleCopyItems = async (
+    sourceNames: string[],
+    destPath: string[],
+    sourcePath?: string[],
+    targetIndex?: number,
+    isFromDrop: boolean = false
+  ) => {
+    const fromPath = sourcePath || currentActivePath;
+    if (sourceNames.length === 0) return;
+
+    // Check large batch threshold confirmation (over threshold items)
+    if (confirmLargeBatchOperations && sourceNames.length > largeBatchThreshold) {
+      setPendingBatchOperation({
+        operation: 'copy',
+        sourceNames,
+        sourcePath: fromPath,
+        destPath,
+        targetIndex,
+        isFromDrop,
+      });
+      return;
+    }
+
+    await executeCopyItems(sourceNames, destPath, fromPath, targetIndex, isFromDrop);
+  };
+
+  const handleConfirmBatchOperation = (dontAskAgain: boolean) => {
+    if (!pendingBatchOperation) return;
+
+    if (dontAskAgain) {
+      setConfirmLargeBatchOperations(false);
+      StorageService.setLocalItem('confirm_large_batch_operations', false);
+      addToast('info', 'Large batch confirmation disabled (can re-enable in Preferences)');
+    }
+
+    const { operation, sourceNames, sourcePath, destPath, targetIndex, isPaste, isFromDrop } = pendingBatchOperation;
+    setPendingBatchOperation(null);
+
+    if (isPaste) {
+      executePaste(sourceNames, sourcePath, destPath, operation === 'move');
+    } else if (operation === 'move') {
+      executeMoveItems(sourceNames, destPath, sourcePath, targetIndex, isFromDrop);
+    } else {
+      executeCopyItems(sourceNames, destPath, sourcePath, targetIndex, isFromDrop);
+    }
+  };
+
+  const handleCancelBatchOperation = () => {
+    setPendingBatchOperation(null);
+    addToast('info', 'Batch operation cancelled');
   };
 
   const handleCreateShortcutItems = (
@@ -846,7 +1075,7 @@ export const App: React.FC = () => {
 
     // 2. If Ctrl / Cmd key held: Explicit Copy
     if (isCtrl) {
-      handleCopyItems(sourceNames, destPath, fromPath, targetIndex);
+      handleCopyItems(sourceNames, destPath, fromPath, targetIndex, true);
       return;
     }
 
@@ -876,44 +1105,10 @@ export const App: React.FC = () => {
 
     if (isSameDrive) {
       // Same-drive: Default is Move
-      handleMoveItems(sourceNames, destPath, fromPath, targetIndex);
-
-      const actionData = {
-        id: Date.now().toString(),
-        operation: 'move' as const,
-        sourceNames,
-        sourcePath: fromPath,
-        destPath,
-        targetIndex,
-        isSameDrive: true,
-        timestamp: Date.now(),
-      };
-      setLastDropAction(actionData);
-
-      if (lastDropTimerRef.current) clearTimeout(lastDropTimerRef.current);
-      lastDropTimerRef.current = setTimeout(() => {
-        setLastDropAction((prev) => (prev?.id === actionData.id ? null : prev));
-      }, 7000);
+      handleMoveItems(sourceNames, destPath, fromPath, targetIndex, true);
     } else {
       // Cross-drive: Default is Copy
-      handleCopyItems(sourceNames, destPath, fromPath, targetIndex);
-
-      const actionData = {
-        id: Date.now().toString(),
-        operation: 'copy' as const,
-        sourceNames,
-        sourcePath: fromPath,
-        destPath,
-        targetIndex,
-        isSameDrive: false,
-        timestamp: Date.now(),
-      };
-      setLastDropAction(actionData);
-
-      if (lastDropTimerRef.current) clearTimeout(lastDropTimerRef.current);
-      lastDropTimerRef.current = setTimeout(() => {
-        setLastDropAction((prev) => (prev?.id === actionData.id ? null : prev));
-      }, 7000);
+      handleCopyItems(sourceNames, destPath, fromPath, targetIndex, true);
     }
   };
 
@@ -1244,18 +1439,31 @@ export const App: React.FC = () => {
     setSortCriteria((prev) => {
       let nextKey: SortKey = 'name';
       if (prev.key === 'name') {
+        nextKey = isCurrentActiveInTrash ? 'originalPath' : 'modified';
+      } else if (prev.key === 'originalPath') {
         nextKey = 'modified';
       } else if (prev.key === 'modified') {
         nextKey = 'size';
+      } else if (prev.key === 'size') {
+        nextKey = 'type';
       } else {
         nextKey = 'name';
       }
-      const label = nextKey === 'name' ? 'Name' : nextKey === 'modified' ? 'Date Modified' : 'Size';
+      const label =
+        nextKey === 'name'
+          ? 'Name'
+          : nextKey === 'originalPath'
+          ? 'Original Path'
+          : nextKey === 'modified'
+          ? 'Date Modified'
+          : nextKey === 'size'
+          ? 'Size'
+          : 'Type';
       addToast('info', `Active Pane sorted by ${label} (${prev.direction.toUpperCase()})`);
       SoundService.playFileSelect();
       return { key: nextKey, direction: prev.direction || 'asc', secondary: undefined };
     });
-  }, [addToast]);
+  }, [addToast, isCurrentActiveInTrash]);
 
   // --- Keyboard Shortcuts ---
   useEffect(() => {
@@ -1290,7 +1498,7 @@ export const App: React.FC = () => {
         const selected = Array.from(currentActiveSelected);
         if (selected.length > 0) {
           e.preventDefault();
-          handleDelete(currentActivePath, selected);
+          handleDelete(currentActivePath, selected, e.shiftKey);
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         handleCopy();
@@ -1419,6 +1627,12 @@ export const App: React.FC = () => {
               }
             }}
             onDelete={() => handleDelete(currentActivePath, Array.from(currentActiveSelected))}
+            onEmptyTrash={handleEmptyTrash}
+            trashCount={trashCount}
+            isInTrash={isCurrentActiveInTrash}
+            onOpenTrash={handleOpenTrash}
+            onRestore={() => handleRestoreFromTrash(Array.from(currentActiveSelected))}
+            canRestore={currentActiveSelected.size > 0}
             onSortChange={setSortCriteria}
             onDisplayModeChange={(mode: DisplayMode) => {
               setDisplayMode(mode);
@@ -1498,6 +1712,7 @@ export const App: React.FC = () => {
             }
             onOpenFloatingChat={handleOpenAIChat}
             onResizeStart={handleSidebarResize}
+            onEmptyTrash={handleEmptyTrash}
           />
         )}
 
@@ -1555,6 +1770,8 @@ export const App: React.FC = () => {
             groupByType={groupByType}
             onToggleGroupByType={handleToggleGroupByType}
             vfsService={vfsRef.current}
+            onEmptyTrash={handleEmptyTrash}
+            onRestore={handleRestoreFromTrash}
             onBatchTag={(itemNames, tag, action) => handleBatchTag(pane1Path, itemNames, tag, action)}
           />
 
@@ -1612,6 +1829,8 @@ export const App: React.FC = () => {
                 groupByType={groupByType}
                 onToggleGroupByType={handleToggleGroupByType}
                 vfsService={vfsRef.current}
+                onEmptyTrash={handleEmptyTrash}
+                onRestore={handleRestoreFromTrash}
                 onBatchTag={(itemNames, tag, action) => handleBatchTag(pane2Path, itemNames, tag, action)}
               />
             </div>
@@ -1780,14 +1999,33 @@ export const App: React.FC = () => {
         <PreferencesDialog
           currentTheme={theme}
           defaultDisplayMode={displayMode}
-          onSavePreferences={(newTheme, newDisplayMode) => {
+          confirmLargeBatchOperations={confirmLargeBatchOperations}
+          largeBatchThreshold={largeBatchThreshold}
+          onSavePreferences={(newTheme, newDisplayMode, newConfirmBatch, newThreshold) => {
             setTheme(newTheme);
             setDisplayMode(newDisplayMode);
+            setConfirmLargeBatchOperations(newConfirmBatch);
+            setLargeBatchThreshold(newThreshold);
             StorageService.setLocalItem('theme', newTheme);
             StorageService.setLocalItem('displayMode', newDisplayMode);
+            StorageService.setLocalItem('confirm_large_batch_operations', newConfirmBatch);
+            StorageService.setLocalItem('large_batch_threshold', newThreshold);
             addToast('success', 'Preferences saved');
           }}
           onClose={() => setDialogPreferences(false)}
+        />
+      )}
+
+      {pendingBatchOperation && (
+        <ConfirmBatchOperationDialog
+          isOpen={true}
+          operation={pendingBatchOperation.operation}
+          itemNames={pendingBatchOperation.sourceNames}
+          sourcePath={pendingBatchOperation.sourcePath}
+          destPath={pendingBatchOperation.destPath}
+          threshold={largeBatchThreshold}
+          onConfirm={handleConfirmBatchOperation}
+          onCancel={handleCancelBatchOperation}
         />
       )}
 

@@ -22,6 +22,7 @@ interface SidebarProps {
   onOpenFullEditor: (content: string, title: string, path: string[]) => void;
   onOpenFloatingChat?: () => void;
   onResizeStart: (e: React.MouseEvent) => void;
+  onEmptyTrash?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -41,6 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenFullEditor,
   onOpenFloatingChat,
   onResizeStart,
+  onEmptyTrash,
 }) => {
   const [activeTab, setActiveTab] = useState<'tree' | 'chat' | 'notes'>('tree');
 
@@ -119,6 +121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onDelete={onDelete}
             onDropOnNode={onDropOnNode}
             onShowProperties={onShowProperties}
+            onEmptyTrash={onEmptyTrash}
           />
         )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   Folder,
   FolderOpen,
@@ -34,6 +34,7 @@ import {
   Minus,
   Plus,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import {
   FileSystemNode,
@@ -95,6 +96,8 @@ interface FileExplorerPaneProps {
   groupByType?: boolean;
   onToggleGroupByType?: () => void;
   vfsService?: VirtualFileSystem;
+  onEmptyTrash?: () => void;
+  onRestore?: (names?: string[]) => void;
   onBatchTag?: (
     itemNames: string[],
     tag: string,
@@ -147,8 +150,21 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
   groupByType = false,
   onToggleGroupByType,
   vfsService,
+  onEmptyTrash,
+  onRestore,
   onBatchTag,
 }) => {
+  const isInTrash = useMemo(() => {
+    if (vfsService) {
+      return vfsService.isTrashPath(currentPath);
+    }
+    return (
+      currentPath.length > 0 &&
+      (currentPath[0].toLowerCase() === 'trash' ||
+        currentPath[currentPath.length - 1].toLowerCase() === 'trash')
+    );
+  }, [vfsService, currentPath]);
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -422,6 +438,10 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
           const extA = a.name.includes('.') ? a.name.split('.').pop()!.toLowerCase() : '';
           const extB = b.name.includes('.') ? b.name.split('.').pop()!.toLowerCase() : '';
           cmp = extA.localeCompare(extB);
+        } else if (rule.key === 'originalPath') {
+          const pathA = a.originalPath ? a.originalPath.join('/') : '';
+          const pathB = b.originalPath ? b.originalPath.join('/') : '';
+          cmp = pathA.localeCompare(pathB, undefined, { numeric: true, sensitivity: 'base' });
         }
 
         if (cmp !== 0) {
@@ -932,6 +952,8 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         if (onSortChange) {
           let nextKey: SortKey = 'name';
           if (sortCriteria.key === 'name') {
+            nextKey = isInTrash ? 'originalPath' : 'modified';
+          } else if (sortCriteria.key === 'originalPath') {
             nextKey = 'modified';
           } else if (sortCriteria.key === 'modified') {
             nextKey = 'size';
@@ -1562,7 +1584,7 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         key={`group-header-row-${group.category}`}
         className="bg-[rgb(var(--color-surface-muted))]/90 backdrop-blur-xs select-none border-y border-[rgb(var(--color-border-base))] sticky top-0 z-10"
       >
-        <td colSpan={5} className="py-1.5 px-2 text-xs">
+        <td colSpan={isInTrash ? 6 : 5} className="py-1.5 px-2 text-xs">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1656,7 +1678,7 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         {/* Before item drop indicator line */}
         {isDropBefore && (
           <tr className="pointer-events-none">
-            <td colSpan={5} className="p-0 relative h-0">
+            <td colSpan={isInTrash ? 6 : 5} className="p-0 relative h-0">
               <div className="absolute inset-x-0 -top-0.5 h-1 bg-blue-500 rounded-full z-20 shadow-[0_0_8px_rgba(59,130,246,0.9)] flex items-center justify-between">
                 <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -ml-1" />
                 <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -mr-1" />
@@ -1678,6 +1700,11 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
           onClick={(e) => handleItemClick(e, item, idx)}
           onDoubleClick={(e) => handleItemDoubleClick(e, item)}
           onContextMenu={(e) => handleItemContextMenu(e, item)}
+          title={
+            isInTrash && item.originalPath && item.originalPath.length > 0
+              ? `${item.name}\nOriginal Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
+              : undefined
+          }
           className={`group cursor-pointer border-b border-[rgb(var(--color-border-base))]/40 transition-all ${
             isDragged
               ? 'opacity-40 bg-blue-500/10 border-dashed border-blue-400'
@@ -1759,6 +1786,15 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                     ))}
                   </div>
                 )}
+                {!isInTrash && item.originalPath && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono flex-shrink-0"
+                    title={`Original location: /${item.originalPath.join('/')}`}
+                  >
+                    <RotateCcw className="w-2.5 h-2.5 text-amber-500" />
+                    <span className="truncate max-w-[120px]">/{item.originalPath.join('/')}</span>
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1781,6 +1817,40 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
               </div>
             )}
           </td>
+          {isInTrash && (
+            <td
+              className="py-2 text-[11px] text-[rgb(var(--color-text-muted))] font-mono max-w-[220px]"
+              title={
+                item.originalPath && item.originalPath.length > 0
+                  ? `Original Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
+                  : 'Original location not recorded'
+              }
+            >
+              {item.originalPath && item.originalPath.length > 0 ? (
+                <div className="flex items-center gap-1.5 group/path">
+                  <span className="truncate text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] border border-amber-500/20 max-w-[170px] inline-block font-medium">
+                    /{item.originalPath.join('/')}
+                  </span>
+                  {onRestore && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onActivate();
+                        onRestore([item.name]);
+                      }}
+                      title={`Restore "${item.name}" back to /${item.originalPath.join('/')}`}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition-opacity cursor-pointer flex-shrink-0"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <span className="text-[rgb(var(--color-text-subtle))]">--</span>
+              )}
+            </td>
+          )}
           <td className="py-2 text-[rgb(var(--color-text-muted))] text-[11px]">
             {item.modified ? new Date(item.modified).toLocaleDateString() : '--'}
           </td>
@@ -1814,7 +1884,7 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         {/* After item drop indicator line */}
         {isDropAfter && (
           <tr className="pointer-events-none">
-            <td colSpan={5} className="p-0 relative h-0">
+            <td colSpan={isInTrash ? 6 : 5} className="p-0 relative h-0">
               <div className="absolute inset-x-0 -bottom-0.5 h-1 bg-blue-500 rounded-full z-20 shadow-[0_0_8px_rgba(59,130,246,0.9)] flex items-center justify-between">
                 <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -ml-1" />
                 <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -mr-1" />
@@ -1852,6 +1922,11 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         onClick={(e) => handleItemClick(e, item, idx)}
         onDoubleClick={(e) => handleItemDoubleClick(e, item)}
         onContextMenu={(e) => handleItemContextMenu(e, item)}
+        title={
+          isInTrash && item.originalPath && item.originalPath.length > 0
+            ? `${item.name}\nOriginal Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
+            : undefined
+        }
         className={`group relative flex flex-col items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all min-h-[105px] ${
           isDragged
             ? 'opacity-40 ring-2 ring-dashed ring-blue-400 scale-[0.98]'
@@ -1967,6 +2042,15 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                   : 'Folder'}
               </p>
             )}
+            {isInTrash && item.originalPath && item.originalPath.length > 0 && (
+              <div
+                className="mt-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] font-mono flex items-center justify-center gap-1 max-w-full"
+                title={`Original location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`}
+              >
+                <RotateCcw className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                <span className="truncate">/{item.originalPath.join('/')}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2000,7 +2084,9 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         onDoubleClick={(e) => handleItemDoubleClick(e, item)}
         onContextMenu={(e) => handleItemContextMenu(e, item)}
         title={
-          item.type === 'folder'
+          isInTrash && item.originalPath && item.originalPath.length > 0
+            ? `${item.name}\nOriginal Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
+            : item.type === 'folder'
             ? folderStats
               ? `${item.name}: ${formatFileSize(folderStats.size, { detailed: true })}\n${folderStats.fileCount} ${folderStats.fileCount === 1 ? 'file' : 'files'}${folderStats.folderCount > 0 ? `, ${folderStats.folderCount} subfolders` : ''}`
               : `${item.name} (Folder)`
@@ -2109,6 +2195,15 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                 <FolderPlus className="w-2.5 h-2.5" /> Drop to move
               </p>
             )}
+            {isInTrash && item.originalPath && item.originalPath.length > 0 && (
+              <div
+                className="mt-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] font-mono flex items-center justify-center gap-1 max-w-full truncate"
+                title={`Original location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`}
+              >
+                <RotateCcw className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                <span className="truncate">/{item.originalPath.join('/')}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2141,6 +2236,11 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         onClick={(e) => handleItemClick(e, item, idx)}
         onDoubleClick={(e) => handleItemDoubleClick(e, item)}
         onContextMenu={(e) => handleItemContextMenu(e, item)}
+        title={
+          isInTrash && item.originalPath && item.originalPath.length > 0
+            ? `${item.name}\nOriginal Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
+            : undefined
+        }
         className={`relative flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition-all ${
           isDragged
             ? 'opacity-40 ring-2 ring-dashed ring-blue-400 scale-[0.98]'
@@ -2228,6 +2328,15 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                     : folderStats
                     ? `${formatFileSize(folderStats.size)}${folderStats.fileCount > 0 ? ` (${folderStats.fileCount})` : ''}`
                     : 'Folder'}
+                </p>
+              )}
+              {isInTrash && item.originalPath && item.originalPath.length > 0 && (
+                <p
+                  className="text-[10px] text-amber-700 dark:text-amber-300 font-mono truncate flex items-center gap-1 mt-0.5"
+                  title={`Original location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`}
+                >
+                  <RotateCcw className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                  <span className="truncate">/{item.originalPath.join('/')}</span>
                 </p>
               )}
             </>
@@ -2327,6 +2436,53 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
         </div>
       )}
 
+      {/* Trash Folder Status Banner */}
+      {isInTrash && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-3.5 py-2 flex items-center justify-between text-xs text-amber-800 dark:text-amber-200 flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Trash2 className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="text-[11px] truncate">
+              <strong className="font-semibold">Trash</strong> — Deleted items are safely stored here until permanently deleted or restored.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            {selectedItems.size > 0 && onRestore && (
+              <button
+                type="button"
+                onClick={() => onRestore(Array.from(selectedItems))}
+                className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                title="Restore selected item(s) back to their original location"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restore Selected ({selectedItems.size})</span>
+              </button>
+            )}
+            {selectedItems.size === 0 && items.length > 0 && onRestore && (
+              <button
+                type="button"
+                onClick={() => onRestore()}
+                className="px-2 py-1 rounded hover:bg-amber-500/20 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                title="Restore all items back to their original locations"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restore All</span>
+              </button>
+            )}
+            {onEmptyTrash && items.length > 0 && (
+              <button
+                type="button"
+                onClick={onEmptyTrash}
+                className="px-2.5 py-1 rounded bg-red-600 hover:bg-red-700 text-white font-medium text-[11px] flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                title="Permanently remove all items in Trash"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Empty Trash</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Items Container */}
       <div ref={itemsContainerRef} className="flex-1 overflow-y-auto p-3">
         {filteredAndSortedItems.length === 0 ? (
@@ -2356,6 +2512,18 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                   Clear Filters
                 </button>
               )}
+            </div>
+          ) : isInTrash ? (
+            <div className="h-full flex flex-col items-center justify-center text-[rgb(var(--color-text-subtle))] text-xs gap-3 p-4 text-center">
+              <div className="p-3.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <Trash2 className="w-8 h-8 text-amber-500/70" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-[rgb(var(--color-text-base))]">Trash is empty</p>
+                <p className="text-[11px] text-[rgb(var(--color-text-subtle))] mt-0.5 max-w-sm">
+                  Deleted files and folders are moved here before permanent removal.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-[rgb(var(--color-text-subtle))] text-xs gap-2">
@@ -2420,6 +2588,33 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                     )}
                   </div>
                 </th>
+                {isInTrash && (
+                  <th
+                    onClick={(e) => handleHeaderSortClick('originalPath', e)}
+                    title={
+                      getSortRuleForColumn('originalPath').isActive
+                        ? `Sorted by Original Path (${getSortRuleForColumn('originalPath').isPrimary ? 'Primary' : `Secondary #${getSortRuleForColumn('originalPath').rank}`}, ${getSortRuleForColumn('originalPath').direction.toUpperCase()}). Click to toggle, Shift+Click to chain secondary sort.`
+                        : 'Sort by Original Path. Hold Shift and click to add as secondary sort criterion.'
+                    }
+                    className={`pb-2 w-52 select-none group/th transition-colors ${onSortChange ? 'cursor-pointer hover:text-[rgb(var(--color-text-base))]' : ''}`}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className={getSortRuleForColumn('originalPath').isActive ? 'font-semibold text-[rgb(var(--color-text-base))]' : ''}>Original Path</span>
+                      {getSortRuleForColumn('originalPath').isActive ? (
+                        <div className="flex items-center gap-0.5 text-[10px] text-[rgb(var(--color-accent-text))] font-bold">
+                          {getSortRuleForColumn('originalPath').direction === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                          {((sortCriteria.secondary?.length || 0) > 0) && (
+                            <span className="w-3.5 h-3.5 rounded-full bg-[rgb(var(--color-accent-bg))] border border-[rgb(var(--color-accent-border))] text-[8px] flex items-center justify-center font-mono leading-none shadow-2xs">
+                              {getSortRuleForColumn('originalPath').rank}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="opacity-0 group-hover/th:opacity-40 text-[9px] text-[rgb(var(--color-text-subtle))] transition-opacity">↕</span>
+                      )}
+                    </div>
+                  </th>
+                )}
                 <th
                   onClick={(e) => handleHeaderSortClick('modified', e)}
                   title={
@@ -2742,21 +2937,23 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 let nextKey: SortKey = 'name';
-                if (sortCriteria.key === 'name') nextKey = 'modified';
+                if (sortCriteria.key === 'name') nextKey = isInTrash ? 'originalPath' : 'modified';
+                else if (sortCriteria.key === 'originalPath') nextKey = 'modified';
                 else if (sortCriteria.key === 'modified') nextKey = 'size';
+                else if (sortCriteria.key === 'size') nextKey = 'type';
                 else nextKey = 'name';
                 onSortChange({ key: nextKey, direction: sortCriteria.direction || 'asc', secondary: undefined });
                 SoundService.playFileSelect();
               }}
               title={
                 sortCriteria.secondary && sortCriteria.secondary.length > 0
-                  ? `Sorted by ${sortCriteria.key === 'modified' ? 'Date' : sortCriteria.key} (${sortCriteria.direction.toUpperCase()}) then ${sortCriteria.secondary.map((s) => `${s.key === 'modified' ? 'Date' : s.key} (${s.direction.toUpperCase()})`).join(', ')} — Click to reset or cycle`
-                  : `Sorted by ${sortCriteria.key === 'modified' ? 'Date Modified' : sortCriteria.key.toUpperCase()} (${sortCriteria.direction.toUpperCase()}) — Click or press Ctrl+S to cycle`
+                  ? `Sorted by ${sortCriteria.key === 'modified' ? 'Date' : sortCriteria.key === 'originalPath' ? 'Original Path' : sortCriteria.key} (${sortCriteria.direction.toUpperCase()}) then ${sortCriteria.secondary.map((s) => `${s.key === 'modified' ? 'Date' : s.key === 'originalPath' ? 'Original Path' : s.key} (${s.direction.toUpperCase()})`).join(', ')} — Click to reset or cycle`
+                  : `Sorted by ${sortCriteria.key === 'modified' ? 'Date Modified' : sortCriteria.key === 'originalPath' ? 'Original Path' : sortCriteria.key.toUpperCase()} (${sortCriteria.direction.toUpperCase()}) — Click or press Ctrl+S to cycle`
               }
               className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-base))] hover:bg-[rgb(var(--color-surface-hover))] border border-[rgb(var(--color-border-base))] text-[10px] text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text-base))] transition-colors shadow-2xs"
             >
               <ArrowDownUp className="w-3 h-3 text-[rgb(var(--color-accent-text))]" />
-              <span className="capitalize">{sortCriteria.key === 'modified' ? 'Date' : sortCriteria.key}</span>
+              <span className="capitalize">{sortCriteria.key === 'modified' ? 'Date' : sortCriteria.key === 'originalPath' ? 'Original Path' : sortCriteria.key}</span>
               <span className="text-[9px] text-[rgb(var(--color-accent-text))] font-bold">
                 {sortCriteria.direction === 'asc' ? '▲' : '▼'}
               </span>
@@ -3158,6 +3355,19 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                 <span>Share / Magnet Info</span>
               </button>
 
+              {isInTrash && onRestore && (
+                <button
+                  onClick={() => {
+                    onRestore(contextTargetNames);
+                    closeContextMenu();
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restore to Original Location</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   onDelete(contextTargetNames);
@@ -3166,7 +3376,9 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-red-500 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Delete {contextTargetNames.length > 1 ? `(${contextTargetNames.length})` : ''}</span>
+                <span>
+                  {isInTrash ? 'Delete Permanently' : 'Delete'} {contextTargetNames.length > 1 ? `(${contextTargetNames.length})` : ''}
+                </span>
               </button>
 
               <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
@@ -3362,40 +3574,72 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                 <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
               )}
 
-              <button
-                onClick={() => {
-                  const name = prompt('New Folder Name:');
-                  if (name && name.trim()) onCreateFolder(name.trim());
-                  closeContextMenu();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
-              >
-                <FolderPlus className="w-4 h-4 text-amber-500" />
-                <span>New Folder</span>
-              </button>
+              {isInTrash ? (
+                <>
+                  {onRestore && items.length > 0 && (
+                    <button
+                      onClick={() => {
+                        onRestore();
+                        closeContextMenu();
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Restore All Items</span>
+                    </button>
+                  )}
+                  {onEmptyTrash && (
+                    <button
+                      onClick={() => {
+                        onEmptyTrash();
+                        closeContextMenu();
+                      }}
+                      disabled={items.length === 0}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-red-500/10 text-red-500 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer font-medium"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Empty Trash</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      const name = prompt('New Folder Name:');
+                      if (name && name.trim()) onCreateFolder(name.trim());
+                      closeContextMenu();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
+                  >
+                    <FolderPlus className="w-4 h-4 text-amber-500" />
+                    <span>New Folder</span>
+                  </button>
 
-              <button
-                onClick={() => {
-                  const name = prompt('New File Name (e.g. notes.md):');
-                  if (name && name.trim()) onCreateFile(name.trim());
-                  closeContextMenu();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
-              >
-                <FilePlus className="w-4 h-4 text-blue-500" />
-                <span>New File</span>
-              </button>
+                  <button
+                    onClick={() => {
+                      const name = prompt('New File Name (e.g. notes.md):');
+                      if (name && name.trim()) onCreateFile(name.trim());
+                      closeContextMenu();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
+                  >
+                    <FilePlus className="w-4 h-4 text-blue-500" />
+                    <span>New File</span>
+                  </button>
 
-              <button
-                onClick={() => {
-                  onPaste();
-                  closeContextMenu();
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
-              >
-                <Copy className="w-4 h-4 text-gray-500" />
-                <span>Paste</span>
-              </button>
+                  <button
+                    onClick={() => {
+                      onPaste();
+                      closeContextMenu();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
+                  >
+                    <Copy className="w-4 h-4 text-gray-500" />
+                    <span>Paste</span>
+                  </button>
+                </>
+              )}
 
               <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
 

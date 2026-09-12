@@ -194,6 +194,14 @@ export const DEFAULT_ROOT_NODE: FileSystemNode = {
         },
       ],
     },
+    {
+      name: 'Trash',
+      type: 'folder',
+      isTrash: true,
+      modified: '2024-05-24T12:00:00Z',
+      childrenLoaded: true,
+      children: [],
+    },
   ],
 };
 
@@ -211,6 +219,9 @@ export function deepCloneNode(node: FileSystemNode): FileSystemNode {
     magnetFile: node.magnetFile,
     size: node.size,
     tags: node.tags ? [...node.tags] : undefined,
+    isTrash: node.isTrash,
+    originalPath: node.originalPath ? [...node.originalPath] : undefined,
+    deletedAt: node.deletedAt,
     children: node.children ? node.children.map(deepCloneNode) : undefined,
   };
 }
@@ -225,6 +236,7 @@ export class VirtualFileSystem {
       const stored = StorageService.getLocalItem<FileSystemNode | null>(FS_STORAGE_KEY, null);
       this.root = stored ? deepCloneNode(stored) : deepCloneNode(DEFAULT_ROOT_NODE);
     }
+    this.ensureTrashFolder();
   }
 
   getRoot(): FileSystemNode {
@@ -233,7 +245,55 @@ export class VirtualFileSystem {
 
   setRoot(newRoot: FileSystemNode): void {
     this.root = deepCloneNode(newRoot);
+    this.ensureTrashFolder();
     this.persist();
+  }
+
+  ensureTrashFolder(): FileSystemNode {
+    if (!this.root.children) {
+      this.root.children = [];
+    }
+    let trashNode = this.root.children.find(c => c.name === 'Trash' || c.isTrash);
+    if (!trashNode) {
+      trashNode = {
+        name: 'Trash',
+        type: 'folder',
+        isTrash: true,
+        modified: new Date().toISOString(),
+        children: [],
+        childrenLoaded: true,
+      };
+      this.root.children.push(trashNode);
+      this.persist();
+    } else {
+      trashNode.isTrash = true;
+      if (!trashNode.children) {
+        trashNode.children = [];
+      }
+    }
+    return trashNode;
+  }
+
+  isTrashPath(path: string[]): boolean {
+    if (!path || path.length === 0) return false;
+    let segments = [...path];
+    if (segments[0] === this.root.name) {
+      segments = segments.slice(1);
+    }
+    if (segments.length > 0 && (segments[0].toLowerCase() === 'trash' || segments[0] === '.trash')) {
+      return true;
+    }
+    const node = this.getNode(path);
+    return !!node?.isTrash;
+  }
+
+  getTrashNode(): FileSystemNode {
+    return deepCloneNode(this.ensureTrashFolder());
+  }
+
+  getTrashCount(): number {
+    const trash = this.ensureTrashFolder();
+    return trash.children ? trash.children.length : 0;
   }
 
   setSessionName(name: string): void {
@@ -537,17 +597,172 @@ export class VirtualFileSystem {
     return count;
   }
 
-  deleteItem(path: string[], itemName: string): boolean {
+  moveToTrash(path: string[], itemName: string): { success: boolean; error?: string } {
+    if (itemName.toLowerCase() === 'trash') {
+      return { success: false, error: 'Cannot delete the Trash system folder.' };
+    }
     const parent = this.getNode(path);
-    if (!parent || !parent.children) return false;
-    parent.children = parent.children.filter(c => c.name !== itemName);
+    if (!parent || !parent.children) {
+      return { success: false, error: 'Source directory not found.' };
+    }
+
+    const itemIdx = parent.children.findIndex(c => c.name === itemName);
+    if (itemIdx === -1) {
+      return { success: false, error: `Item "${itemName}" not found.` };
+    }
+
+    const [item] = parent.children.splice(itemIdx, 1);
+    const trash = this.ensureTrashFolder();
+
+    // Preserve original path and store deletion timestamp
+    item.originalPath = [...path];
+    item.deletedAt = new Date().toISOString();
+
+    // If item with the same name already exists in Trash, make unique name
+    let targetName = item.name;
+    let counter = 1;
+    while (trash.children?.some(c => c.name.toLowerCase() === targetName.toLowerCase())) {
+      const dotIdx = item.name.lastIndexOf('.');
+      if (dotIdx > 0 && item.type === 'file') {
+        const base = item.name.substring(0, dotIdx);
+        const ext = item.name.substring(dotIdx);
+        targetName = `${base} (${counter})${ext}`;
+      } else {
+        targetName = `${item.name} (${counter})`;
+      }
+      counter++;
+    }
+    item.name = targetName;
+
+    trash.children = trash.children || [];
+    trash.children.unshift(item); // Most recently deleted first
     this.persist();
-    return true;
+    return { success: true };
   }
 
-  deleteItems(items: { path: string[]; name: string }[]): void {
+  restoreFromTrash(itemName: string): { success: boolean; restoredPath?: string[]; restoredName?: string; error?: string } {
+    const trash = this.ensureTrashFolder();
+    if (!trash.children) {
+      return { success: false, error: 'Trash is empty.' };
+    }
+
+    const itemIdx = trash.children.findIndex(c => c.name === itemName);
+    if (itemIdx === -1) {
+      return { success: false, error: `Item "${itemName}" not found in Trash.` };
+    }
+
+    const [item] = trash.children.splice(itemIdx, 1);
+
+    let targetPath = item.originalPath && item.originalPath.length > 0
+      ? [...item.originalPath]
+      : [this.root.name];
+
+    let destNode = this.getNode(targetPath);
+    if (!destNode || destNode.type !== 'folder') {
+      // Recreate missing directory chain if original location was deleted
+      let currentCheckPath: string[] = [];
+      let ok = true;
+      for (const seg of targetPath) {
+        if (seg === this.root.name) {
+          currentCheckPath = [seg];
+          continue;
+        }
+        const parentNode = this.getNode(currentCheckPath);
+        if (parentNode && parentNode.children) {
+          let child = parentNode.children.find(c => c.name === seg && c.type === 'folder');
+          if (!child) {
+            parentNode.children.push({
+              name: seg,
+              type: 'folder',
+              modified: new Date().toISOString(),
+              children: [],
+              childrenLoaded: true,
+            });
+          }
+        } else {
+          ok = false;
+          break;
+        }
+        currentCheckPath.push(seg);
+      }
+      destNode = ok ? this.getNode(targetPath) : null;
+      if (!destNode) {
+        targetPath = [this.root.name];
+        destNode = this.root;
+      }
+    }
+
+    destNode.children = destNode.children || [];
+
+    // Ensure unique name in destination
+    let restoredName = item.name;
+    let counter = 1;
+    const baseCandidate = restoredName;
+    while (destNode.children.some(c => c.name.toLowerCase() === restoredName.toLowerCase())) {
+      const dotIdx = baseCandidate.lastIndexOf('.');
+      if (dotIdx > 0 && item.type === 'file') {
+        const base = baseCandidate.substring(0, dotIdx);
+        const ext = baseCandidate.substring(dotIdx);
+        restoredName = `${base} (Restored ${counter})${ext}`;
+      } else {
+        restoredName = `${baseCandidate} (Restored ${counter})`;
+      }
+      counter++;
+    }
+    item.name = restoredName;
+    delete item.deletedAt;
+
+    destNode.children.push(item);
+    this.persist();
+    return { success: true, restoredPath: targetPath, restoredName };
+  }
+
+  restoreAllFromTrash(): { count: number; failed: number } {
+    const trash = this.ensureTrashFolder();
+    if (!trash.children || trash.children.length === 0) {
+      return { count: 0, failed: 0 };
+    }
+    const names = trash.children.map(c => c.name);
+    let count = 0;
+    let failed = 0;
+    for (const name of names) {
+      const res = this.restoreFromTrash(name);
+      if (res.success) {
+        count++;
+      } else {
+        failed++;
+      }
+    }
+    return { count, failed };
+  }
+
+  emptyTrash(): number {
+    const trash = this.ensureTrashFolder();
+    const count = trash.children ? trash.children.length : 0;
+    trash.children = [];
+    this.persist();
+    return count;
+  }
+
+  deleteItem(path: string[], itemName: string, permanent: boolean = false): boolean {
+    if (itemName.toLowerCase() === 'trash' && this.isTrashPath([...path, itemName])) {
+      return false; // Never delete the Trash folder itself
+    }
+    if (this.isTrashPath(path) || permanent) {
+      const parent = this.getNode(path);
+      if (!parent || !parent.children) return false;
+      parent.children = parent.children.filter(c => c.name !== itemName);
+      this.persist();
+      return true;
+    } else {
+      const res = this.moveToTrash(path, itemName);
+      return res.success;
+    }
+  }
+
+  deleteItems(items: { path: string[]; name: string }[], permanent: boolean = false): void {
     for (const it of items) {
-      this.deleteItem(it.path, it.name);
+      this.deleteItem(it.path, it.name, permanent);
     }
   }
 
@@ -579,6 +794,10 @@ export class VirtualFileSystem {
   }
 
   moveItem(sourcePath: string[], itemName: string, destPath: string[], targetIndex?: number): boolean {
+    if (itemName.toLowerCase() === 'trash' && this.isTrashPath([...sourcePath, itemName])) {
+      return false; // Prevent moving the Trash system folder
+    }
+
     const sourceParent = this.getNode(sourcePath);
     const destParent = this.getNode(destPath);
     if (!sourceParent || !sourceParent.children || !destParent || destParent.type !== 'folder') return false;
@@ -601,6 +820,14 @@ export class VirtualFileSystem {
 
     destParent.children = destParent.children || [];
     const [item] = sourceParent.children.splice(itemIndex, 1);
+
+    // If destination is Trash, record originalPath and deletedAt
+    if (this.isTrashPath(destPath)) {
+      item.originalPath = [...sourcePath];
+      item.deletedAt = new Date().toISOString();
+    } else if (this.isTrashPath(sourcePath)) {
+      delete item.deletedAt;
+    }
 
     // If destination already has an item with the same name, rename cleanly
     let finalName = item.name;

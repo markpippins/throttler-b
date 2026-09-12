@@ -130,6 +130,12 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
 
         <span className="truncate flex-1">{node.name}</span>
 
+        {(node.isTrash || node.name.toLowerCase() === 'trash') && node.children && node.children.length > 0 && (
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-600 dark:text-red-400 font-bold ml-1">
+            {node.children.length}
+          </span>
+        )}
+
         <button
           onClick={(e) => {
             e.stopPropagation();

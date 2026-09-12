@@ -43,6 +43,7 @@ import {
   Sparkles,
   Download,
   Briefcase,
+  Trash2,
 } from 'lucide-react';
 import { FileSystemNode } from '../types';
 
@@ -120,6 +121,19 @@ export function getFileMetadata(
 
   // 2. Folder Handlers with High-Fidelity Categories
   if (isDir) {
+    if (lowerName === 'trash' || lowerName === 'recycle bin' || node?.isTrash) {
+      return {
+        extension: '',
+        label: 'TRASH',
+        category: 'folder',
+        color: 'text-red-500',
+        bgColor: 'bg-red-500/10',
+        borderColor: 'border-red-500/30',
+        badgeColor: 'bg-red-500 text-white',
+        icon: Trash2,
+      };
+    }
+
     if (lowerName === 'pictures' || lowerName === 'images' || lowerName === 'photos') {
       return {
         extension: '',

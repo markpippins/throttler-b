@@ -15,6 +15,9 @@ export interface FileSystemNode {
   isShortcut?: boolean;
   size?: number;
   tags?: string[];
+  isTrash?: boolean;
+  originalPath?: string[];
+  deletedAt?: string;
 }
 
 export interface SearchResultNode extends FileSystemNode {
@@ -80,7 +83,7 @@ export interface RssItem {
   link: string;
 }
 
-export type SortKey = 'name' | 'modified' | 'size' | 'type';
+export type SortKey = 'name' | 'modified' | 'size' | 'type' | 'originalPath';
 export type SortDirection = 'asc' | 'desc';
 
 export interface SortRule {

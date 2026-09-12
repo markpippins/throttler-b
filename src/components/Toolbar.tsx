@@ -33,8 +33,9 @@ import {
   Sparkles,
   Layers,
   Tag,
+  RotateCcw,
 } from 'lucide-react';
-import { SortCriteria, DisplayMode } from '../types';
+import { SortCriteria, DisplayMode, SortKey } from '../types';
 import { PRESET_TAGS, getTagStyle, parseFilterQuery, useTagDefinitions } from '../utils/tagUtils';
 
 interface ToolbarProps {
@@ -70,6 +71,12 @@ interface ToolbarProps {
   onRename: () => void;
   onShare: () => void;
   onDelete: () => void;
+  onEmptyTrash?: () => void;
+  trashCount?: number;
+  isInTrash?: boolean;
+  onOpenTrash?: () => void;
+  onRestore?: () => void;
+  canRestore?: boolean;
   onSortChange: (sort: SortCriteria) => void;
   onDisplayModeChange: (mode: DisplayMode) => void;
   onGroupByTypeChange?: (groupByType: boolean) => void;
@@ -131,6 +138,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onRename,
   onShare,
   onDelete,
+  onEmptyTrash,
+  trashCount = 0,
+  isInTrash = false,
+  onOpenTrash,
+  onRestore,
+  canRestore = false,
   onSortChange,
   onDisplayModeChange,
   onGroupByTypeChange,
@@ -372,11 +385,49 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onDelete}
           disabled={!canDelete}
-          title="Delete (Delete)"
+          title={isInTrash ? "Permanently Delete Selected" : "Move to Trash (Delete)"}
           className="p-1.5 rounded hover:bg-[rgb(var(--color-surface-hover))] hover:text-red-500 disabled:opacity-30 disabled:hover:bg-transparent text-[rgb(var(--color-text-muted))]"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+
+        {isInTrash && onRestore && (
+          <button
+            onClick={onRestore}
+            disabled={!canRestore}
+            title="Restore selected item(s) to original location"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Restore</span>
+          </button>
+        )}
+
+        {onEmptyTrash && (
+          <button
+            id="toolbar-empty-trash-btn"
+            onClick={onEmptyTrash}
+            disabled={trashCount === 0}
+            title={
+              trashCount > 0
+                ? `Empty Trash (${trashCount} item${trashCount === 1 ? '' : 's'})`
+                : 'Empty Trash (Trash is empty)'
+            }
+            className={`flex items-center gap-1.5 px-2 py-1 rounded transition-colors text-xs font-medium ${
+              trashCount > 0
+                ? 'hover:bg-red-500/15 text-red-600 dark:text-red-400 hover:text-red-700'
+                : 'text-[rgb(var(--color-text-muted))] opacity-40 hover:bg-transparent cursor-not-allowed'
+            }`}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Empty Trash</span>
+            {trashCount > 0 && (
+              <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-red-500/20 text-red-600 dark:text-red-400 font-bold leading-none">
+                {trashCount}
+              </span>
+            )}
+          </button>
+        )}
 
         <div className="h-4 w-px bg-[rgb(var(--color-border-base))] mx-0.5" />
 
@@ -397,7 +448,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <span>Sort By</span>
                 <span className="text-[9px] font-normal lowercase opacity-70">Shift+Click multi</span>
               </div>
-              {(['name', 'modified', 'size', 'type'] as const).map((key) => {
+              {(isInTrash
+                ? (['name', 'originalPath', 'modified', 'size', 'type'] as const)
+                : (['name', 'modified', 'size', 'type'] as const)
+              ).map((key) => {
                 const isPrimary = currentSort.key === key;
                 const secIdx = currentSort.secondary?.findIndex((s) => s.key === key) ?? -1;
                 const isSecondary = secIdx >= 0;
@@ -432,7 +486,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                     className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
                   >
                     <div className="flex items-center gap-1.5">
-                      <span className="capitalize">{key === 'modified' ? 'Date Modified' : key}</span>
+                      <span className="capitalize">{key === 'modified' ? 'Date Modified' : key === 'originalPath' ? 'Original Path' : key}</span>
                       {isSecondary && (
                         <span className="text-[8px] px-1 py-0.2 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] text-[rgb(var(--color-accent-text))] font-mono">
                           #{secIdx + 2}
@@ -1168,6 +1222,49 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <Sliders className="w-4 h-4 text-indigo-500" />
                 <span>Preferences</span>
               </button>
+
+              <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
+
+              {onOpenTrash && (
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onOpenTrash();
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]"
+                >
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-4 h-4 text-amber-500" />
+                    <span>Open Trash Folder</span>
+                  </div>
+                  {trashCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      {trashCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {onEmptyTrash && (
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    onEmptyTrash();
+                  }}
+                  disabled={trashCount === 0}
+                  className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-red-500/10 text-red-500 disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  <div className="flex items-center gap-2">
+                    <Trash2 className="w-4 h-4" />
+                    <span>Empty Trash</span>
+                  </div>
+                  {trashCount > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-500">
+                      {trashCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               <div className="border-t border-[rgb(var(--color-border-base))] my-1" />
 
