@@ -34,6 +34,8 @@ import {
   Layers,
   Tag,
   RotateCcw,
+  Zap,
+  Folder,
 } from 'lucide-react';
 import { SortCriteria, DisplayMode, SortKey } from '../types';
 import { PRESET_TAGS, getTagStyle, parseFilterQuery, useTagDefinitions } from '../utils/tagUtils';
@@ -49,6 +51,9 @@ interface ToolbarProps {
   displayMode: DisplayMode;
   groupByType?: boolean;
   filterQuery: string;
+  searchScope?: 'folder' | 'vfs';
+  onSearchScopeChange?: (scope: 'folder' | 'vfs') => void;
+  onOpenGlobalSearch?: () => void;
   activeTagFilter?: string | null;
   onTagFilterChange?: (tag: string | null) => void;
   tagCounts?: Map<string, number>;
@@ -116,6 +121,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   displayMode,
   groupByType = false,
   filterQuery,
+  searchScope = 'folder',
+  onSearchScopeChange,
+  onOpenGlobalSearch,
   activeTagFilter = null,
   onTagFilterChange,
   tagCounts,
@@ -984,78 +992,127 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         {/* Global Real-Time Search / Filter */}
-        <div className="relative flex items-center group">
-          <Search
-            className={`w-3.5 h-3.5 absolute left-2.5 transition-colors pointer-events-none ${
-              filterQuery
-                ? 'text-blue-500'
-                : activeTagFilter
-                ? 'text-indigo-500'
-                : 'text-[rgb(var(--color-text-subtle))] group-hover:text-[rgb(var(--color-text-muted))]'
+        <div className="relative flex items-center gap-1 group">
+          {/* Search Scope Switcher (Folder vs Entire VFS) */}
+          <button
+            id="toolbar-search-scope-btn"
+            type="button"
+            onClick={() => onSearchScopeChange?.(searchScope === 'vfs' ? 'folder' : 'vfs')}
+            title={
+              searchScope === 'vfs'
+                ? 'Search Scope: Entire VFS (Full-Text Index & Bloom Filter). Click to switch to Current Folder'
+                : 'Search Scope: Current Folder. Click to search Entire VFS'
+            }
+            className={`px-1.5 py-1 rounded text-[10px] font-medium transition-colors flex items-center gap-1 cursor-pointer border shrink-0 ${
+              searchScope === 'vfs'
+                ? 'bg-blue-600/20 text-blue-400 border-blue-500/40 shadow-xs'
+                : 'bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-muted))] border-[rgb(var(--color-border-base))] hover:text-[rgb(var(--color-text-base))]'
             }`}
-          />
-          <input
-            id="toolbar-search-input"
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search items... (or tag:work, #urgent)"
-            value={filterQuery}
-            onChange={(e) => onFilterChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                onFilterChange('');
-                searchInputRef.current?.blur();
-              }
-            }}
-            className={`w-36 sm:w-56 pl-8 pr-16 py-1 rounded-md bg-[rgb(var(--color-surface-input))] border text-xs text-[rgb(var(--color-text-base))] placeholder:text-[rgb(var(--color-text-subtle))] transition-all focus:outline-none focus:ring-1 focus:ring-[rgb(var(--color-accent-text))] ${
-              filterQuery
-                ? 'border-blue-500/80 ring-1 ring-blue-500/30'
-                : activeTagFilter
-                ? 'border-indigo-500/50 ring-1 ring-indigo-500/20'
-                : 'border-[rgb(var(--color-border-input))] hover:border-[rgb(var(--color-border-base))]'
-            }`}
-          />
-
-          {/* Right badges & Clear action */}
-          <div className="absolute right-1.5 flex items-center gap-1">
-            {filterQuery || activeTagFilter ? (
+          >
+            {searchScope === 'vfs' ? (
               <>
-                {typeof matchCount === 'number' && typeof totalCount === 'number' && (
-                  <span
-                    id="toolbar-search-match-count"
-                    title={`${matchCount} of ${totalCount} items matched`}
-                    className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
-                      matchCount === 0
-                        ? 'bg-rose-500/20 text-rose-400'
-                        : activeTagFilter && !filterQuery
-                        ? 'bg-indigo-500/20 text-indigo-400'
-                        : 'bg-blue-500/20 text-blue-400'
-                    }`}
-                  >
-                    {matchCount}/{totalCount}
-                  </span>
-                )}
-                {filterQuery && (
-                  <button
-                    id="toolbar-search-clear"
-                    onClick={() => {
-                      onFilterChange('');
-                      searchInputRef.current?.focus();
-                    }}
-                    title="Clear search query (Escape)"
-                    className="p-0.5 rounded-full hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] hover:text-[rgb(var(--color-text-base))] transition-colors cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <Zap className="w-3 h-3 text-blue-400" />
+                <span className="font-mono">VFS</span>
               </>
             ) : (
-              <kbd className="hidden sm:inline-block text-[9px] font-mono px-1 py-0.2 bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] border border-[rgb(var(--color-border-base))] rounded pointer-events-none">
-                /
-              </kbd>
+              <>
+                <Folder className="w-3 h-3 text-amber-400" />
+                <span className="font-mono">Folder</span>
+              </>
             )}
+          </button>
+
+          <div className="relative flex items-center">
+            <Search
+              className={`w-3.5 h-3.5 absolute left-2.5 transition-colors pointer-events-none ${
+                filterQuery
+                  ? searchScope === 'vfs' ? 'text-blue-400' : 'text-blue-500'
+                  : activeTagFilter
+                  ? 'text-indigo-500'
+                  : 'text-[rgb(var(--color-text-subtle))] group-hover:text-[rgb(var(--color-text-muted))]'
+              }`}
+            />
+            <input
+              id="toolbar-search-input"
+              ref={searchInputRef}
+              type="text"
+              placeholder={searchScope === 'vfs' ? 'Search entire VFS (Bloom Filter)...' : 'Search items... (or tag:work, #urgent)'}
+              value={filterQuery}
+              onChange={(e) => onFilterChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onFilterChange('');
+                  searchInputRef.current?.blur();
+                } else if (e.key === 'Enter' && onOpenGlobalSearch && searchScope === 'vfs') {
+                  e.preventDefault();
+                  onOpenGlobalSearch();
+                }
+              }}
+              className={`w-36 sm:w-56 pl-8 pr-16 py-1 rounded-md bg-[rgb(var(--color-surface-input))] border text-xs text-[rgb(var(--color-text-base))] placeholder:text-[rgb(var(--color-text-subtle))] transition-all focus:outline-none focus:ring-1 focus:ring-[rgb(var(--color-accent-text))] ${
+                filterQuery
+                  ? searchScope === 'vfs'
+                    ? 'border-blue-500 ring-1 ring-blue-500/40 bg-blue-500/5'
+                    : 'border-blue-500/80 ring-1 ring-blue-500/30'
+                  : activeTagFilter
+                  ? 'border-indigo-500/50 ring-1 ring-indigo-500/20'
+                  : 'border-[rgb(var(--color-border-input))] hover:border-[rgb(var(--color-border-base))]'
+              }`}
+            />
+
+            {/* Right badges & Clear action */}
+            <div className="absolute right-1.5 flex items-center gap-1">
+              {filterQuery || activeTagFilter ? (
+                <>
+                  {typeof matchCount === 'number' && typeof totalCount === 'number' && (
+                    <span
+                      id="toolbar-search-match-count"
+                      title={`${matchCount} of ${totalCount} items matched`}
+                      className={`text-[10px] px-1 py-0.2 rounded font-mono font-medium ${
+                        matchCount === 0
+                          ? 'bg-rose-500/20 text-rose-400'
+                          : activeTagFilter && !filterQuery
+                          ? 'bg-indigo-500/20 text-indigo-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                      }`}
+                    >
+                      {matchCount}/{totalCount}
+                    </span>
+                  )}
+                  {filterQuery && (
+                    <button
+                      id="toolbar-search-clear"
+                      onClick={() => {
+                        onFilterChange('');
+                        searchInputRef.current?.focus();
+                      }}
+                      title="Clear search query (Escape)"
+                      className="p-0.5 rounded-full hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] hover:text-[rgb(var(--color-text-base))] transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <kbd className="hidden sm:inline-block text-[9px] font-mono px-1 py-0.2 bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] border border-[rgb(var(--color-border-base))] rounded pointer-events-none">
+                  /
+                </kbd>
+              )}
+            </div>
           </div>
+
+          {/* Global Search Dialog Launcher Button */}
+          {onOpenGlobalSearch && (
+            <button
+              id="toolbar-global-search-modal-btn"
+              type="button"
+              onClick={onOpenGlobalSearch}
+              title="Open Global Full-Text Search Dialog (Ctrl+Shift+F)"
+              className="p-1.5 rounded hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-muted))] hover:text-blue-400 transition-colors cursor-pointer shrink-0"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <div className="h-4 w-px bg-[rgb(var(--color-border-base))] mx-0.5" />

@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Terminal as TerminalIcon, X, Maximize2, Minimize2, Trash2 } from 'lucide-react';
 import { FileSystemNode } from '../types';
+import { VirtualFileSystem } from '../services/fileSystemService';
 
 interface ConsoleTerminalProps {
   height: number;
   currentPath: string[];
   rootNode: FileSystemNode;
+  vfsService?: VirtualFileSystem;
   onNavigate: (path: string[]) => void;
   onCreateFolder: (path: string[], name: string) => void;
   onCreateFile: (path: string[], name: string) => void;
@@ -24,6 +26,7 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
   height,
   currentPath,
   rootNode,
+  vfsService,
   onNavigate,
   onCreateFolder,
   onCreateFile,
@@ -91,7 +94,10 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
   clear             Clear the console
   echo <text>       Display line of text
   whoami            Print current session user
-  date              Display current system timestamp`,
+  date              Display current system timestamp
+  search <query>    Full-text search across entire VFS via Bloom filter index
+  find <query>      Alias for search
+  index-stats       Display search index and Bloom filter diagnostics`,
         });
         break;
 
@@ -223,6 +229,61 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
         } else {
           onDelete(currentPath, name);
           newLogs.push({ id: (Date.now() + 1).toString(), type: 'output', text: `Removed: ${name}` });
+        }
+        break;
+      }
+
+      case 'search':
+      case 'find': {
+        const query = args.join(' ');
+        if (!query) {
+          newLogs.push({ id: (Date.now() + 1).toString(), type: 'error', text: 'search: missing search query. Usage: search <query>' });
+        } else if (vfsService) {
+          const t0 = performance.now();
+          const results = vfsService.search(query);
+          const elapsed = (performance.now() - t0).toFixed(2);
+          if (results.length === 0) {
+            newLogs.push({
+              id: (Date.now() + 1).toString(),
+              type: 'output',
+              text: `No matches found for "${query}" across VFS (${elapsed}ms via Bloom filter index)`,
+            });
+          } else {
+            const formatted = results.slice(0, 15).map((r) => {
+              const fullPath = r.path ? `/${r.path.join('/')}` : `/${r.name}`;
+              const matchInfo = r.matchField ? ` [${r.matchField}]` : '';
+              const snippetInfo = r.snippet ? `\n    Snippet: "${r.snippet}"` : '';
+              return `  ${r.type === 'folder' ? '📁' : '📄'} ${fullPath}${matchInfo}${snippetInfo}`;
+            }).join('\n');
+            const moreText = results.length > 15 ? `\n  ... and ${results.length - 15} more matches` : '';
+            newLogs.push({
+              id: (Date.now() + 1).toString(),
+              type: 'output',
+              text: `Found ${results.length} match(es) across VFS in ${elapsed}ms:\n${formatted}${moreText}`,
+            });
+          }
+        } else {
+          newLogs.push({ id: (Date.now() + 1).toString(), type: 'error', text: 'search: VFS service not available' });
+        }
+        break;
+      }
+
+      case 'index-stats': {
+        if (vfsService) {
+          const stats = vfsService.getSearchIndexStats();
+          newLogs.push({
+            id: (Date.now() + 1).toString(),
+            type: 'output',
+            text: `VFS Full-Text Search Index & Bloom Filter Statistics:
+  Total Documents:     ${stats.totalDocuments} (Files: ${stats.totalFiles}, Folders: ${stats.totalFolders})
+  Indexed Tokens:      ${stats.totalTokens}
+  Bloom Filter Size:   ${stats.bloomFilterBits} bits (${(stats.bloomFilterBits / 8).toFixed(0)} bytes)
+  Hash Functions:      ${stats.bloomHashCount} (FNV-1a Kirsch-Mitzenmacher bitwise)
+  Re-index Duration:   ${stats.buildTimeMs.toFixed(2)}ms
+  Last Updated:        ${new Date(stats.lastUpdated).toLocaleTimeString()}`,
+          });
+        } else {
+          newLogs.push({ id: (Date.now() + 1).toString(), type: 'error', text: 'index-stats: VFS service not available' });
         }
         break;
       }

@@ -22,6 +22,10 @@ export interface FileSystemNode {
 
 export interface SearchResultNode extends FileSystemNode {
   path: string[];
+  score?: number;
+  snippet?: string;
+  matchField?: 'name' | 'content' | 'tags' | 'path';
+  matchedTerms?: string[];
 }
 
 export interface SubtreeStats {

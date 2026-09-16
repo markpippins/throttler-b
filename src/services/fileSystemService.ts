@@ -1,5 +1,9 @@
 import { FileSystemNode, SearchResultNode, SubtreeStats } from '../types';
 import { StorageService } from './storageService';
+import { VfsSearchIndex, SearchOptions, IndexStats, BloomFilter } from './searchIndexService';
+
+export { VfsSearchIndex, BloomFilter };
+export type { SearchOptions, IndexStats };
 
 const FS_STORAGE_KEY = 'file-explorer-session-fs';
 
@@ -228,6 +232,7 @@ export function deepCloneNode(node: FileSystemNode): FileSystemNode {
 
 export class VirtualFileSystem {
   private root: FileSystemNode;
+  private searchIndex: VfsSearchIndex = new VfsSearchIndex();
 
   constructor(initialRoot?: FileSystemNode) {
     if (initialRoot) {
@@ -237,6 +242,7 @@ export class VirtualFileSystem {
       this.root = stored ? deepCloneNode(stored) : deepCloneNode(DEFAULT_ROOT_NODE);
     }
     this.ensureTrashFolder();
+    this.searchIndex.indexTree(this.root);
   }
 
   getRoot(): FileSystemNode {
@@ -303,6 +309,7 @@ export class VirtualFileSystem {
 
   private persist(): void {
     StorageService.setLocalItem(FS_STORAGE_KEY, this.root);
+    this.searchIndex.indexTree(this.root);
   }
 
   getNode(path: string[]): FileSystemNode | null {
@@ -921,30 +928,21 @@ export class VirtualFileSystem {
     return true;
   }
 
-  search(query: string): SearchResultNode[] {
-    const results: SearchResultNode[] = [];
-    const lowerQuery = query.toLowerCase();
+  search(query: string, options?: SearchOptions): SearchResultNode[] {
+    if (!query || !query.trim()) return [];
+    return this.searchIndex.search(query, options);
+  }
 
-    function traverse(node: FileSystemNode, currentPath: string[]) {
-      if (node.name.toLowerCase().includes(lowerQuery) || (node.content && node.content.toLowerCase().includes(lowerQuery))) {
-        results.push({
-          ...deepCloneNode(node),
-          path: [...currentPath, node.name],
-        });
-      }
-      if (node.children) {
-        for (const child of node.children) {
-          traverse(child, [...currentPath, node.name]);
-        }
-      }
-    }
+  getSearchIndex(): VfsSearchIndex {
+    return this.searchIndex;
+  }
 
-    if (this.root.children) {
-      for (const child of this.root.children) {
-        traverse(child, [this.root.name]);
-      }
-    }
-    return results;
+  getSearchIndexStats(): IndexStats {
+    return this.searchIndex.getStats();
+  }
+
+  rebuildSearchIndex(): void {
+    this.searchIndex.indexTree(this.root);
   }
 
   exportJson(): string {

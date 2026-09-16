@@ -21,6 +21,7 @@ import { TextEditorDialog } from './components/dialogs/TextEditorDialog';
 import { WebviewDialog } from './components/dialogs/WebviewDialog';
 import { PropertiesDialog } from './components/dialogs/PropertiesDialog';
 import { ConfirmBatchOperationDialog } from './components/dialogs/ConfirmBatchOperationDialog';
+import { GlobalSearchDialog } from './components/dialogs/GlobalSearchDialog';
 
 import { VirtualFileSystem, setVfsService } from './services/fileSystemService';
 import { StorageService } from './services/storageService';
@@ -38,6 +39,9 @@ import {
   FileOperationProgress,
 } from './types';
 import { matchesFilter } from './utils/tagUtils';
+import { createGovernedDirector } from './governance/adapters/throttlerVfsAdapter';
+import { RenameItemInteraction, SHRAPNEL_REVISIONS } from './governance/shrapnel/types';
+import { runGovernancePilotTests } from './governance/tests/runPilotTests';
 
 const BOOKMARKS_STORAGE_KEY = 'file-explorer-bookmarks';
 
@@ -46,9 +50,24 @@ export const App: React.FC = () => {
   const vfsRef = useRef<VirtualFileSystem>(new VirtualFileSystem());
   const [rootNode, setRootNode] = useState<FileSystemNode>(vfsRef.current.getRoot());
 
+  // Governed Director instance wired to the current VFS
+  const governanceRef = useRef(createGovernedDirector(vfsRef.current));
+
+  // Run pilot parity & refusal tests once on bootstrap
+  useEffect(() => {
+    runGovernancePilotTests().then(res => {
+      if (res.allPassed) {
+        console.log('🛡️ [SOL / §10 / Aegis / Shrapnel] Governed Pilot Tests:\n' + res.logs.join('\n'));
+      } else {
+        console.error('❌ [SOL / §10 / Aegis / Shrapnel] Pilot Tests Failed:\n' + res.logs.join('\n'));
+      }
+    });
+  }, []);
+
   // Keep singleton reference synced for helper access
   useEffect(() => {
     setVfsService(vfsRef.current);
+    governanceRef.current = createGovernedDirector(vfsRef.current);
   }, [rootNode]);
 
   // --- Panes & Navigation State ---
@@ -77,6 +96,8 @@ export const App: React.FC = () => {
 
   // Filter & Display Modes
   const [filterQuery, setFilterQuery] = useState<string>('');
+  const [searchScope, setSearchScope] = useState<'folder' | 'vfs'>('folder');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>('grid');
   const [sortCriteria, setSortCriteria] = useState<SortCriteria>({ key: 'name', direction: 'asc' });
@@ -289,6 +310,28 @@ export const App: React.FC = () => {
   const pane1Items = useMemo(() => getItemsForPath(pane1Path), [getItemsForPath, pane1Path, rootNode]);
   const pane2Items = useMemo(() => getItemsForPath(pane2Path), [getItemsForPath, pane2Path, rootNode]);
 
+  // VFS Search Index results when searchScope is 'vfs'
+  const vfsSearchResults = useMemo(() => {
+    if (searchScope === 'vfs' && filterQuery.trim()) {
+      return vfsRef.current.search(filterQuery.trim());
+    }
+    return null;
+  }, [searchScope, filterQuery, rootNode]);
+
+  const displayedPane1Items = useMemo(() => {
+    if (activePane === 1 && vfsSearchResults) {
+      return vfsSearchResults;
+    }
+    return pane1Items;
+  }, [activePane, vfsSearchResults, pane1Items]);
+
+  const displayedPane2Items = useMemo(() => {
+    if (activePane === 2 && vfsSearchResults) {
+      return vfsSearchResults;
+    }
+    return pane2Items;
+  }, [activePane, vfsSearchResults, pane2Items]);
+
   const trashCount = useMemo(() => {
     return vfsRef.current.getTrashCount();
   }, [rootNode]);
@@ -422,13 +465,33 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRename = (path: string[], oldName: string, newName: string) => {
-    const success = vfsRef.current.renameItem(path, oldName, newName);
-    if (success) {
+  const handleRename = async (path: string[], oldName: string, newName: string) => {
+    const correlationId = `corr:${Date.now()}`;
+    const interaction: RenameItemInteraction = {
+      interaction_id: `int:${Date.now()}`,
+      interaction_type: 'RenameItem',
+      interaction_type_revision: SHRAPNEL_REVISIONS.RenameItem,
+      actor: { id: 'operator', role: 'admin' },
+      subject: { id: `${path.join('/')}/${oldName}`, concept: 'File' },
+      context: { pane_id: activePane, source_path: path },
+      payload: { old_name: oldName, new_name: newName },
+      correlation_id: correlationId,
+      timestamp: new Date().toISOString(),
+    };
+
+    const result = await governanceRef.current.director.executeRename(interaction);
+
+    if (result.status === 'completed') {
       triggerVfsUpdate();
-      addToast('success', `Renamed "${oldName}" to "${newName}"`);
+      const kcShort = result.keychain_checkpoint ? ` [KC: ${result.keychain_checkpoint.checkpoint_id.slice(-6)}]` : '';
+      addToast('success', `Renamed "${oldName}" to "${newName}"${kcShort}`);
+      console.log('🛡️ [Aegis/SOL] Rename completed:', result);
+    } else if (result.status === 'refused') {
+      addToast('error', `Refused: ${result.refusal_reason}`);
+      console.warn('🛡️ [Aegis/SOL] Rename refused by check guard:', result);
     } else {
-      addToast('error', `Cannot rename to "${newName}"`);
+      addToast('error', `Failed: ${result.refusal_reason || 'Capability execution error'}`);
+      console.error('🛡️ [Aegis/SOL] Rename failed:', result);
     }
   };
 
@@ -1500,6 +1563,9 @@ export const App: React.FC = () => {
           e.preventDefault();
           handleDelete(currentActivePath, selected, e.shiftKey);
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setIsGlobalSearchOpen(true);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         handleCopy();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
@@ -1554,12 +1620,16 @@ export const App: React.FC = () => {
 
       {/* 2. Top Toolbar */}
       {(() => {
-        const activeItems = activePane === 1 ? pane1Items : pane2Items;
+        const activeItems = activePane === 1 ? displayedPane1Items : displayedPane2Items;
         const hasFilter = filterQuery.trim().length > 0 || !!activeTagFilter;
-        const matchCount = hasFilter
+        const matchCount = searchScope === 'vfs' && vfsSearchResults
+          ? vfsSearchResults.length
+          : hasFilter
           ? activeItems.filter((it) => matchesFilter(it, filterQuery, activeTagFilter)).length
           : undefined;
-        const totalCount = hasFilter ? activeItems.length : undefined;
+        const totalCount = searchScope === 'vfs' && vfsSearchResults
+          ? vfsSearchResults.length
+          : hasFilter ? activeItems.length : undefined;
 
         // Compute tag counts and total tagged count for current active folder
         const tagCounts = new Map<string, number>();
@@ -1586,6 +1656,9 @@ export const App: React.FC = () => {
             displayMode={displayMode}
             groupByType={groupByType}
             filterQuery={filterQuery}
+            searchScope={searchScope}
+            onSearchScopeChange={setSearchScope}
+            onOpenGlobalSearch={() => setIsGlobalSearchOpen(true)}
             activeTagFilter={activeTagFilter}
             onTagFilterChange={setActiveTagFilter}
             tagCounts={tagCounts}
@@ -1723,7 +1796,7 @@ export const App: React.FC = () => {
             paneId={1}
             isActive={activePane === 1}
             currentPath={pane1Path}
-            items={pane1Items}
+            items={displayedPane1Items}
             displayMode={displayMode}
             sortCriteria={sortCriteria}
             filterQuery={filterQuery}
@@ -1782,7 +1855,7 @@ export const App: React.FC = () => {
                 paneId={2}
                 isActive={activePane === 2}
                 currentPath={pane2Path}
-                items={pane2Items}
+                items={displayedPane2Items}
                 displayMode={displayMode}
                 sortCriteria={sortCriteria}
                 filterQuery={filterQuery}
@@ -1888,6 +1961,7 @@ export const App: React.FC = () => {
           height={terminalHeight}
           currentPath={currentActivePath}
           rootNode={rootNode}
+          vfsService={vfsRef.current}
           onNavigate={(p) => handleNavigatePane(activePane, p)}
           onCreateFolder={(p, n) => handleCreateFolder(p, n)}
           onCreateFile={(p, n) => handleCreateFile(p, n)}
@@ -2332,6 +2406,21 @@ export const App: React.FC = () => {
           <span className="text-xs font-semibold tracking-wide">Ask AI</span>
         </button>
       )}
+
+      {/* 10. Global Full-Text Search Dialog (Bloom Filter + Inverted Index) */}
+      <GlobalSearchDialog
+        isOpen={isGlobalSearchOpen}
+        onClose={() => setIsGlobalSearchOpen(false)}
+        vfs={vfsRef.current}
+        initialQuery={filterQuery || ''}
+        onNavigateToItem={(path: string[]) => {
+          handleNavigatePane(activePane, path);
+          addToast('info', `Navigated to /${path.join('/')}`);
+        }}
+        onOpenFile={(node: FileSystemNode, path: string[]) => {
+          handleOpenFile(node, path);
+        }}
+      />
 
       {/* 9. Toast Notifications */}
       <Toasts toasts={toasts} onDismiss={removeToast} />

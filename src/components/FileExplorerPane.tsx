@@ -45,6 +45,7 @@ import {
   FileTransferObject,
   FileGroupCategory,
   SubtreeStats,
+  SearchResultNode,
 } from '../types';
 import { FileIcon, getFileTypeDescription } from './FileIcon';
 import { SoundService } from '../services/soundService';
@@ -924,10 +925,13 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
             : filteredAndSortedItems[currentFocus];
 
         if (itemToOpen) {
+          const sNode = itemToOpen as SearchResultNode;
           if (itemToOpen.type === 'folder') {
-            onNavigate([...currentPath, itemToOpen.name]);
+            const folderPath = sNode.path && sNode.path.length > 0 ? sNode.path : [...currentPath, itemToOpen.name];
+            onNavigate(folderPath);
           } else {
-            onOpenFile(itemToOpen, currentPath);
+            const filePath = sNode.path && sNode.path.length > 0 ? sNode.path.slice(0, -1) : currentPath;
+            onOpenFile(itemToOpen, filePath);
           }
         }
         return;
@@ -1045,10 +1049,13 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
 
   const handleItemDoubleClick = (e: React.MouseEvent, item: FileSystemNode) => {
     e.stopPropagation();
+    const sNode = item as SearchResultNode;
     if (item.type === 'folder') {
-      onNavigate([...currentPath, item.name]);
+      const folderPath = sNode.path && sNode.path.length > 0 ? sNode.path : [...currentPath, item.name];
+      onNavigate(folderPath);
     } else {
-      onOpenFile(item, currentPath);
+      const filePath = sNode.path && sNode.path.length > 0 ? sNode.path.slice(0, -1) : currentPath;
+      onOpenFile(item, filePath);
     }
   };
 
@@ -1785,6 +1792,23 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
                       />
                     ))}
                   </div>
+                )}
+                {!isInTrash && (item as SearchResultNode).path && (
+                  <span
+                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-300 font-mono flex-shrink-0"
+                    title={`Location: /${(item as SearchResultNode).path.join('/')}`}
+                  >
+                    <Folder className="w-2.5 h-2.5 text-blue-400" />
+                    <span className="truncate max-w-[130px]">/{(item as SearchResultNode).path.slice(0, -1).join('/')}</span>
+                  </span>
+                )}
+                {(item as SearchResultNode).snippet && (
+                  <span
+                    className="text-[10px] text-amber-600 dark:text-amber-400/90 truncate max-w-[180px] italic hidden sm:inline"
+                    title={(item as SearchResultNode).snippet}
+                  >
+                    "{(item as SearchResultNode).snippet}"
+                  </span>
                 )}
                 {!isInTrash && item.originalPath && (
                   <span
@@ -3128,10 +3152,15 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
 
               <button
                 onClick={() => {
-                  if (contextMenu.targetItem?.type === 'folder') {
-                    onNavigate([...currentPath, contextMenu.targetItem.name]);
-                  } else if (contextMenu.targetItem) {
-                    onOpenFile(contextMenu.targetItem, currentPath);
+                  if (contextMenu.targetItem) {
+                    const sNode = contextMenu.targetItem as SearchResultNode;
+                    if (contextMenu.targetItem.type === 'folder') {
+                      const folderPath = sNode.path && sNode.path.length > 0 ? sNode.path : [...currentPath, contextMenu.targetItem.name];
+                      onNavigate(folderPath);
+                    } else {
+                      const filePath = sNode.path && sNode.path.length > 0 ? sNode.path.slice(0, -1) : currentPath;
+                      onOpenFile(contextMenu.targetItem, filePath);
+                    }
                   }
                   closeContextMenu();
                 }}
