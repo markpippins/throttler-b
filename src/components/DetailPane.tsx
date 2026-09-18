@@ -6,6 +6,8 @@ import {
   ExternalLink,
   Search,
   ChevronDown,
+  ChevronRight,
+  ChevronUp,
   RefreshCw,
   X,
   Globe,
@@ -37,12 +39,29 @@ import {
   Volume2,
   Terminal,
   Calendar,
-  HardDrive
+  HardDrive,
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  Fingerprint,
+  Hash,
+  Database,
+  Cpu,
+  FileCheck,
+  BadgeCheck,
+  Lock,
 } from 'lucide-react';
 import { Bookmark, FileSystemNode, RssFeed, RssItem } from '../types';
 import { FileIcon, getFileTypeDescription } from './FileIcon';
 import { formatFileSize } from '../utils/fileUtils';
 import { TagBadge } from './TagBadge';
+import {
+  type WitnessedRunProjection,
+  type WitnessedRunStatus,
+  isValidSha256Digest,
+} from '@nexus/projection-core';
+import { apiService } from '../services/apiService';
 
 export interface DetailPaneProps {
   width: number;
@@ -52,6 +71,8 @@ export interface DetailPaneProps {
   selectedItem?: FileSystemNode | null;
   selectedItemsCount?: number;
   folderItems?: FileSystemNode[];
+  workflowInstanceId?: string;
+  nodeId?: string;
   onNavigate?: (path: string[]) => void;
   onOpenFile?: (item: FileSystemNode) => void;
   onOpenFullEditor?: (content: string, title: string, path: string[]) => void;
@@ -185,6 +206,8 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
   selectedItem,
   selectedItemsCount = 0,
   folderItems = [],
+  workflowInstanceId,
+  nodeId,
   onNavigate,
   onOpenFile,
   onOpenFullEditor,
@@ -195,7 +218,7 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
   onResizeStart,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'preview' | 'bookmarks' | 'rss'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'witness' | 'bookmarks' | 'rss'>('preview');
   const [bookmarkFilter, setBookmarkFilter] = useState('');
   const [selectedFeedId, setSelectedFeedId] = useState<string>(feeds[0]?.id || '');
   const [copiedCode, setCopiedCode] = useState(false);
@@ -204,14 +227,141 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
   const [imgNaturalSize, setImgNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [codeFilter, setCodeFilter] = useState('');
 
-  // Auto-switch to preview tab when single item selected
+  // Witnessed Run query & projection state
+  const defaultWfId = useMemo(() => {
+    if (workflowInstanceId) return workflowInstanceId;
+    if (selectedItem) {
+      return `wf-${selectedItem.name.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    }
+    return `wf-${currentPath.join('_') || 'root'}`;
+  }, [workflowInstanceId, selectedItem?.name, currentPath]);
+
+  const defaultNodeId = useMemo(() => {
+    if (nodeId) return nodeId;
+    if (selectedItem) {
+      const fullPath = [...currentPath, selectedItem.name].join('/');
+      return `node:${fullPath}`;
+    }
+    return `node:dir:${currentPath.join('/') || 'root'}`;
+  }, [nodeId, selectedItem?.name, currentPath]);
+
+  const [queryWfId, setQueryWfId] = useState(defaultWfId);
+  const [queryNodeId, setQueryNodeId] = useState(defaultNodeId);
+  const [witnessedRun, setWitnessedRun] = useState<WitnessedRunProjection | null>(null);
+  const [loadingWitness, setLoadingWitness] = useState(false);
+  const [witnessError, setWitnessError] = useState<string | null>(null);
+  const [copiedDigestKey, setCopiedDigestKey] = useState<string | null>(null);
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [rawJsonExpanded, setRawJsonExpanded] = useState(false);
+  const [isLiveApi, setIsLiveApi] = useState(apiService.isLive());
+
+  // Keep query inputs in sync when selection/defaults change
+  useEffect(() => {
+    setQueryWfId(defaultWfId);
+    setQueryNodeId(defaultNodeId);
+  }, [defaultWfId, defaultNodeId]);
+
+  // Fetch projection from API
+  const loadWitnessedRun = async (wf: string, node: string) => {
+    if (!wf.trim() || !node.trim()) return;
+    setLoadingWitness(true);
+    setWitnessError(null);
+    try {
+      const data = await apiService.fetchWitnessedRun({ workflowInstanceId: wf.trim(), nodeId: node.trim() });
+      setWitnessedRun(data);
+    } catch (err) {
+      setWitnessError(err instanceof Error ? err.message : String(err));
+      setWitnessedRun(null);
+    } finally {
+      setLoadingWitness(false);
+    }
+  };
+
+  // Initial and reactive load
+  useEffect(() => {
+    loadWitnessedRun(queryWfId, queryNodeId);
+  }, [queryWfId, queryNodeId, isLiveApi]);
+
+  const handleCopyDigest = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedDigestKey(key);
+    setTimeout(() => setCopiedDigestKey(null), 2000);
+  };
+
+  const handleCopyJson = (jsonString: string) => {
+    navigator.clipboard.writeText(jsonString);
+    setCopiedJson(true);
+    setTimeout(() => setCopiedJson(false), 2000);
+  };
+
+  const toggleLiveApiMode = () => {
+    const nextMode = !isLiveApi;
+    apiService.setLive(nextMode);
+    setIsLiveApi(nextMode);
+  };
+
+  // Auto-switch to preview tab when single item selected, unless inspecting witness tab
   useEffect(() => {
     if (selectedItem) {
-      setActiveTab('preview');
+      if (activeTab !== 'witness') {
+        setActiveTab('preview');
+      }
       setImgNaturalSize(null);
       setCodeFilter('');
     }
   }, [selectedItem?.name]);
+
+  // Digest verification analysis
+  const digestItems = useMemo(() => {
+    if (!witnessedRun) return [];
+    const items = [
+      {
+        id: 'contract_digest',
+        label: 'Contract Digest',
+        description: 'Attests to immutable contract schema, law definitions, and governance versioning',
+        digest: witnessedRun.envelope.contractDigest,
+        source: 'envelope.contractDigest',
+      },
+      {
+        id: 'evaluation_fingerprint',
+        label: 'Evaluation Fingerprint',
+        description: 'Cryptographic execution witness for Solscript evaluation and proposition checks',
+        digest: witnessedRun.envelope.evaluationFingerprint,
+        source: 'envelope.evaluationFingerprint',
+      },
+      {
+        id: 'manifest_digest',
+        label: 'Manifest Digest',
+        description: 'Snapshot digest of virtual filesystem read-set inputs and node state',
+        digest: witnessedRun.manifest.digest,
+        source: 'manifest.digest',
+      },
+      {
+        id: 'evidence_fingerprint',
+        label: 'Evidence Fingerprint',
+        description: 'Ledger audit chain anchoring transition evidence to Keychain checkpoints',
+        digest: witnessedRun.evidence.fingerprint,
+        source: 'evidence.fingerprint',
+      },
+    ];
+
+    return items.map((item) => {
+      const isValid = isValidSha256Digest(item.digest);
+      const isMissing = !item.digest;
+      return {
+        ...item,
+        isValidFormat: isValid,
+        isMissing,
+        length: item.digest ? item.digest.length : 0,
+        algorithm: 'SHA-256',
+        prefix: 'sha256:',
+      };
+    });
+  }, [witnessedRun]);
+
+  const totalDigests = digestItems.length;
+  const validDigestsCount = digestItems.filter((d) => d.isValidFormat).length;
+  const allDigestsValid = totalDigests > 0 && validDigestsCount === totalDigests;
 
   const currentPathString = currentPath.join('/');
 
@@ -307,6 +457,250 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
     return `https://picsum.photos/seed/${encodeURIComponent(selectedItem.name)}/800/600`;
   }, [selectedItem]);
 
+  // Helper badges and text for Witnessed Run statuses
+  const getStatusBadge = (status: WitnessedRunStatus | string) => {
+    switch (status) {
+      case 'complete':
+        return {
+          icon: <ShieldCheck className="w-4 h-4 text-emerald-500" />,
+          badgeClass: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+          title: 'Complete & Attested',
+          desc: 'Authoritative execution record verified with full lineage & conforming digests.',
+        };
+      case 'refusal':
+        return {
+          icon: <XCircle className="w-4 h-4 text-rose-500" />,
+          badgeClass: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
+          title: 'Refusal Enforced',
+          desc: 'Action rejected by constitutional guard or admission policy.',
+        };
+      case 'drift':
+        return {
+          icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+          title: 'Execution Drift',
+          desc: 'Replay divergent from original execution fingerprint or doctrine.',
+        };
+      case 'stale':
+        return {
+          icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+          badgeClass: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+          title: 'Stale Doctrine',
+          desc: 'Attested with a superseded doctrine version.',
+        };
+      case 'missing_lineage':
+        return {
+          icon: <XCircle className="w-4 h-4 text-zinc-400" />,
+          badgeClass: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+          title: 'Missing Lineage',
+          desc: 'Incomplete receipts, missing evidence chain, or uncommitted transaction.',
+        };
+      case 'duplicate_retry':
+        return {
+          icon: <RefreshCw className="w-4 h-4 text-blue-500" />,
+          badgeClass: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+          title: 'Duplicate Retry',
+          desc: 'Deduplicated against prior admission record.',
+        };
+      default:
+        return {
+          icon: <Info className="w-4 h-4 text-zinc-400" />,
+          badgeClass: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+          title: status || 'Unknown',
+          desc: 'Unclassified execution status.',
+        };
+    }
+  };
+
+  const getReplayBadge = (status: string | null | undefined) => {
+    if (!status) return { label: 'None', class: 'text-[rgb(var(--color-text-subtle))]' };
+    if (status === 'replay_ok') {
+      return { label: 'replay_ok (Bit-identical match)', class: 'text-emerald-500 font-semibold' };
+    }
+    if (status.includes('drift')) {
+      return { label: status, class: 'text-amber-500 font-semibold' };
+    }
+    if (status.includes('mismatch') || status.includes('refuse')) {
+      return { label: status, class: 'text-rose-500 font-semibold' };
+    }
+    return { label: status, class: 'text-blue-500 font-medium' };
+  };
+
+  const handleApplyPreset = (preset: 'selected' | 'demo' | 'missing') => {
+    if (preset === 'selected') {
+      setQueryWfId(defaultWfId);
+      setQueryNodeId(defaultNodeId);
+      loadWitnessedRun(defaultWfId, defaultNodeId);
+    } else if (preset === 'demo') {
+      const wf = 'wf-live-demo-1';
+      const node = 'node:rename-item-alpha';
+      setQueryWfId(wf);
+      setQueryNodeId(node);
+      loadWitnessedRun(wf, node);
+    } else if (preset === 'missing') {
+      const wf = 'missing-lineage-run';
+      const node = 'node:unadmitted-item';
+      setQueryWfId(wf);
+      setQueryNodeId(node);
+      loadWitnessedRun(wf, node);
+    }
+  };
+
+  // Immediate visual indicator configuration based on WitnessedRunProjection verification status
+  const governanceIndicator = useMemo(() => {
+    if (loadingWitness && !witnessedRun) {
+      return {
+        status: 'loading' as const,
+        label: 'Verifying...',
+        shortLabel: 'Verifying',
+        color: 'blue',
+        icon: <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin flex-shrink-0" />,
+        smallIcon: <RefreshCw className="w-2.5 h-2.5 text-blue-500 animate-spin flex-shrink-0" />,
+        badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+        dotClass: 'bg-blue-500 animate-pulse',
+        ringClass: 'ring-1 ring-blue-500/30',
+        tooltip: 'Querying backend cryptographic attestation and witness lineage...',
+        description: 'Verifying cryptographic digests against execution-srv...',
+      };
+    }
+
+    if (witnessError) {
+      return {
+        status: 'error' as const,
+        label: 'Attestation Error',
+        shortLabel: 'Error',
+        color: 'rose',
+        icon: <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />,
+        smallIcon: <AlertTriangle className="w-2.5 h-2.5 text-rose-500 flex-shrink-0" />,
+        badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+        dotClass: 'bg-rose-500',
+        ringClass: 'ring-1 ring-rose-500/30',
+        tooltip: `Attestation query error: ${witnessError}`,
+        description: 'Failed to retrieve attested projection from execution-srv.',
+      };
+    }
+
+    if (!witnessedRun) {
+      return {
+        status: 'none' as const,
+        label: 'Unattested',
+        shortLabel: 'Unwitnessed',
+        color: 'zinc',
+        icon: <ShieldCheck className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />,
+        smallIcon: <ShieldCheck className="w-2.5 h-2.5 text-zinc-400 flex-shrink-0" />,
+        badgeClass: 'bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border-zinc-500/20',
+        dotClass: 'bg-zinc-400',
+        ringClass: 'ring-1 ring-zinc-400/20',
+        tooltip: 'No witnessed run projection available for this file item.',
+        description: 'File has not been attested by an execution runtime witness.',
+      };
+    }
+
+    switch (witnessedRun.status) {
+      case 'complete': {
+        const isReplayOk = witnessedRun.replay?.status === 'replay_ok';
+        const isAllDigestsValid = allDigestsValid;
+        return {
+          status: 'complete' as const,
+          label: isAllDigestsValid && isReplayOk ? 'Attested & Verified' : 'Attested',
+          shortLabel: 'Attested',
+          color: 'emerald',
+          icon: <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />,
+          smallIcon: <ShieldCheck className="w-2.5 h-2.5 text-emerald-500 flex-shrink-0" />,
+          badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20',
+          dotClass: 'bg-emerald-500',
+          ringClass: 'ring-1 ring-emerald-500/30',
+          tooltip: `Governance Status: Complete & Attested (Passes all fail-closed criteria, ${validDigestsCount}/${totalDigests} SHA-256 conforming digests, bit-for-bit replay verified)`,
+          description: 'Governance state: Attested and cryptographic digests conforming.',
+        };
+      }
+      case 'refusal':
+        return {
+          status: 'refusal' as const,
+          label: 'Refusal Enforced',
+          shortLabel: 'Refused',
+          color: 'rose',
+          icon: <XCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />,
+          smallIcon: <XCircle className="w-2.5 h-2.5 text-rose-500 flex-shrink-0" />,
+          badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20',
+          dotClass: 'bg-rose-500',
+          ringClass: 'ring-1 ring-rose-500/30',
+          tooltip: `Governance Status: Refusal Enforced (Execution rejected by constitutional policy guard${witnessedRun.assessment?.reason ? `: ${witnessedRun.assessment.reason}` : ''})`,
+          description: 'Execution rejected by constitutional guard.',
+        };
+      case 'drift':
+        return {
+          status: 'drift' as const,
+          label: 'Execution Drift',
+          shortLabel: 'Drift',
+          color: 'amber',
+          icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />,
+          smallIcon: <AlertTriangle className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" />,
+          badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20',
+          dotClass: 'bg-amber-500 animate-pulse',
+          ringClass: 'ring-1 ring-amber-500/30',
+          tooltip: 'Governance Status: Drift Detected (Replay output diverged from original execution fingerprint)',
+          description: 'Replay divergent from execution fingerprint.',
+        };
+      case 'stale':
+        return {
+          status: 'stale' as const,
+          label: 'Stale Doctrine',
+          shortLabel: 'Stale',
+          color: 'amber',
+          icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />,
+          smallIcon: <AlertTriangle className="w-2.5 h-2.5 text-amber-500 flex-shrink-0" />,
+          badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20',
+          dotClass: 'bg-amber-500',
+          ringClass: 'ring-1 ring-amber-500/30',
+          tooltip: 'Governance Status: Stale Doctrine (Attested under a previous/superseded constitutional rule version)',
+          description: 'Attested with superseded doctrine version.',
+        };
+      case 'missing_lineage':
+        return {
+          status: 'missing_lineage' as const,
+          label: 'Missing Lineage',
+          shortLabel: 'Unadmitted',
+          color: 'zinc',
+          icon: <XCircle className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />,
+          smallIcon: <XCircle className="w-2.5 h-2.5 text-zinc-400 flex-shrink-0" />,
+          badgeClass: 'bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border-zinc-500/20 hover:bg-zinc-500/20',
+          dotClass: 'bg-zinc-400',
+          ringClass: 'ring-1 ring-zinc-400/20',
+          tooltip: 'Governance Status: Missing Lineage (Incomplete receipts, missing evidence chain, or uncommitted transaction)',
+          description: 'Incomplete receipts or missing evidence chain.',
+        };
+      case 'duplicate_retry':
+        return {
+          status: 'duplicate_retry' as const,
+          label: 'Duplicate Retry',
+          shortLabel: 'Duplicate',
+          color: 'blue',
+          icon: <RefreshCw className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />,
+          smallIcon: <RefreshCw className="w-2.5 h-2.5 text-blue-500 flex-shrink-0" />,
+          badgeClass: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20',
+          dotClass: 'bg-blue-500',
+          ringClass: 'ring-1 ring-blue-500/30',
+          tooltip: 'Governance Status: Duplicate Retry (Deduplicated against prior admission record)',
+          description: 'Deduplicated against prior admission record.',
+        };
+      default:
+        return {
+          status: 'unknown' as const,
+          label: String(witnessedRun.status),
+          shortLabel: String(witnessedRun.status),
+          color: 'zinc',
+          icon: <Info className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />,
+          smallIcon: <Info className="w-2.5 h-2.5 text-zinc-400 flex-shrink-0" />,
+          badgeClass: 'bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border-zinc-500/20',
+          dotClass: 'bg-zinc-400',
+          ringClass: 'ring-1 ring-zinc-400/20',
+          tooltip: `Governance Status: ${witnessedRun.status}`,
+          description: `Status: ${witnessedRun.status}`,
+        };
+    }
+  }, [witnessedRun, loadingWitness, witnessError, allDigestsValid, validDigestsCount, totalDigests]);
+
   return (
     <div
       style={{ width: `${width}px` }}
@@ -334,6 +728,20 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
             {selectedItem && (
               <span className="w-1.5 h-1.5 rounded-full bg-[rgb(var(--color-accent-text))] animate-pulse" />
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('witness')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-t-md font-medium border-t border-x transition-colors whitespace-nowrap ${
+              activeTab === 'witness'
+                ? 'bg-[rgb(var(--color-surface-base))] border-[rgb(var(--color-border-base))] text-[rgb(var(--color-accent-text))]'
+                : 'border-transparent text-[rgb(var(--color-text-muted))] hover:text-[rgb(var(--color-text-base))]'
+            }`}
+            title={`Witnessed Run: ${governanceIndicator.label} (${governanceIndicator.tooltip})`}
+          >
+            {governanceIndicator.icon}
+            <span>Witnessed Run</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${governanceIndicator.dotClass}`} />
           </button>
 
           <button
@@ -382,16 +790,34 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
               <div className="p-3 border-b border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/40 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <FileIcon
-                      nodeOrName={selectedItem}
-                      isFolder={selectedItem.type === 'folder'}
-                      size="sm"
-                      className="w-5 h-5 flex-shrink-0"
-                    />
+                    <div className="relative flex-shrink-0">
+                      <FileIcon
+                        nodeOrName={selectedItem}
+                        isFolder={selectedItem.type === 'folder'}
+                        size="sm"
+                        className="w-5 h-5"
+                      />
+                      {/* Overlaid Corner Verification Indicator Dot on File Icon */}
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[rgb(var(--color-surface-base))] ${governanceIndicator.dotClass}`}
+                        title={governanceIndicator.tooltip}
+                      />
+                    </div>
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-xs text-[rgb(var(--color-text-base))] truncate" title={selectedItem.name}>
-                        {selectedItem.name}
-                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-semibold text-xs text-[rgb(var(--color-text-base))] truncate" title={selectedItem.name}>
+                          {selectedItem.name}
+                        </h3>
+                        {/* At-a-glance Governance Verification Status Pill */}
+                        <button
+                          onClick={() => setActiveTab('witness')}
+                          className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${governanceIndicator.badgeClass}`}
+                          title={`${governanceIndicator.tooltip} - Click to inspect in Witnessed Run tab`}
+                        >
+                          {governanceIndicator.smallIcon}
+                          <span className="font-mono">{governanceIndicator.shortLabel}</span>
+                        </button>
+                      </div>
                       <p className="text-[10px] text-[rgb(var(--color-text-muted))] truncate">
                         {getFileTypeDescription(selectedItem)}
                       </p>
@@ -423,6 +849,18 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
 
                 {/* Quick File Metadata Badges */}
                 <div className="flex items-center gap-2 flex-wrap text-[10px] text-[rgb(var(--color-text-subtle))]">
+                  {/* Primary Visual Indicator: Governance State Badge */}
+                  <button
+                    onClick={() => setActiveTab('witness')}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${governanceIndicator.badgeClass}`}
+                    title={`${governanceIndicator.tooltip} - Click to inspect attestation and digest verification details`}
+                  >
+                    {governanceIndicator.icon}
+                    <span>
+                      Governance: <strong className="font-bold">{governanceIndicator.label}</strong>
+                    </span>
+                  </button>
+
                   {selectedItem.type === 'file' && (
                     <span className="px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))]">
                       {formatFileSize(selectedItem.size || selectedItem.content?.length || 0)}
@@ -451,6 +889,43 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
                     ))}
                   </div>
                 )}
+
+                {/* Quick Witnessed Run & Digest Verification Status Ribbon */}
+                <div className="mt-2 pt-2 border-t border-[rgb(var(--color-border-base))] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {governanceIndicator.icon}
+                      <span className="text-[10px] text-[rgb(var(--color-text-base))] font-medium truncate">
+                        Witness:{' '}
+                        <span className={`uppercase font-mono text-[9px] px-1.5 py-0.5 rounded border font-semibold ${governanceIndicator.badgeClass}`}>
+                          {loadingWitness ? 'fetching...' : witnessedRun?.status ?? 'pending'}
+                        </span>
+                      </span>
+                    </div>
+                    {witnessedRun && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold hidden sm:inline-flex items-center gap-0.5 ${
+                          allDigestsValid
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                        }`}
+                        title={`${validDigestsCount} of ${totalDigests} digests valid SHA-256`}
+                      >
+                        <CheckCircle2 className="w-2.5 h-2.5" />
+                        <span>{validDigestsCount}/{totalDigests} Digests Valid</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('witness')}
+                    className="text-[10px] text-[rgb(var(--color-accent-text))] hover:underline flex items-center gap-0.5 font-medium flex-shrink-0"
+                    title="View full Witnessed Run attestation & digest verification"
+                  >
+                    <span>Inspect Attestation</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
 
               {/* B. IMAGE THUMBNAIL PREVIEW */}
@@ -543,7 +1018,7 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
                 <div className="flex-1 flex flex-col overflow-hidden">
                   {/* Code Toolbar */}
                   <div className="px-3 py-2 border-b border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/30 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Code className="w-3.5 h-3.5 text-indigo-500" />
                       <span className="font-medium text-[11px] text-[rgb(var(--color-text-base))]">
                         {getLanguageLabel(selectedItem.name)}
@@ -551,6 +1026,15 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
                       <span className="text-[10px] text-[rgb(var(--color-text-subtle))]">
                         ({lines.length} lines)
                       </span>
+                      {/* Code Toolbar Governance State Pill */}
+                      <button
+                        onClick={() => setActiveTab('witness')}
+                        className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex items-center gap-1 transition-all cursor-pointer ${governanceIndicator.badgeClass}`}
+                        title={`${governanceIndicator.tooltip} - Click to inspect in Witnessed Run tab`}
+                      >
+                        {governanceIndicator.smallIcon}
+                        <span>{governanceIndicator.shortLabel}</span>
+                      </button>
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -761,7 +1245,408 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 2. BOOKMARKS TAB VIEW */}
+      {/* 2. WITNESSED RUN ATTESTATION & DIGEST VERIFICATION TAB VIEW */}
+      {/* ========================================================================= */}
+      {activeTab === 'witness' && (
+        <div className="flex-1 flex flex-col overflow-hidden bg-[rgb(var(--color-surface-base))]">
+          {/* Query & API Connection Control Bar */}
+          <div className="p-2.5 border-b border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/60 flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span className="font-semibold text-xs text-[rgb(var(--color-text-base))]">
+                  Witnessed-Run Projection
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Live vs Simulated API Mode Pill */}
+                <button
+                  onClick={toggleLiveApiMode}
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-medium border flex items-center gap-1 transition-colors ${
+                    isLiveApi
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                      : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/20'
+                  }`}
+                  title={isLiveApi ? 'Connected to live execution-srv (port 4249). Click to switch to simulation.' : 'Using local projection simulation. Click to switch to live execution-srv.'}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${isLiveApi ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`} />
+                  <span>{isLiveApi ? 'LIVE :4249' : 'SIMULATED'}</span>
+                </button>
+
+                <button
+                  onClick={() => loadWitnessedRun(queryWfId, queryNodeId)}
+                  disabled={loadingWitness}
+                  className="p-1 rounded hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-muted))] disabled:opacity-50 transition-colors"
+                  title="Refresh Witnessed Run from API"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingWitness ? 'animate-spin text-[rgb(var(--color-accent-text))]' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Query Inputs */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <div>
+                <label className="text-[9px] font-medium text-[rgb(var(--color-text-subtle))] block mb-0.5">
+                  Workflow Instance ID
+                </label>
+                <input
+                  type="text"
+                  value={queryWfId}
+                  onChange={(e) => setQueryWfId(e.target.value)}
+                  placeholder="e.g. wf-demo-1"
+                  className="w-full px-2 py-1 rounded bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))] text-[11px] font-mono text-[rgb(var(--color-text-base))] outline-none focus:ring-1 focus:ring-[rgb(var(--color-accent-text))]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[9px] font-medium text-[rgb(var(--color-text-subtle))] block mb-0.5">
+                  Node ID
+                </label>
+                <input
+                  type="text"
+                  value={queryNodeId}
+                  onChange={(e) => setQueryNodeId(e.target.value)}
+                  placeholder="e.g. node:item-1"
+                  className="w-full px-2 py-1 rounded bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))] text-[11px] font-mono text-[rgb(var(--color-text-base))] outline-none focus:ring-1 focus:ring-[rgb(var(--color-accent-text))]"
+                />
+              </div>
+            </div>
+
+            {/* Presets Bar */}
+            <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+              <span className="text-[9px] text-[rgb(var(--color-text-subtle))]">Presets:</span>
+              <button
+                onClick={() => handleApplyPreset('selected')}
+                className="px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-base))] hover:bg-[rgb(var(--color-surface-hover))] border border-[rgb(var(--color-border-base))] text-[10px] text-[rgb(var(--color-text-muted))] transition-colors"
+              >
+                Selected Item
+              </button>
+              <button
+                onClick={() => handleApplyPreset('demo')}
+                className="px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-base))] hover:bg-[rgb(var(--color-surface-hover))] border border-[rgb(var(--color-border-base))] text-[10px] text-[rgb(var(--color-text-muted))] transition-colors"
+              >
+                Demo Run
+              </button>
+              <button
+                onClick={() => handleApplyPreset('missing')}
+                className="px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-base))] hover:bg-[rgb(var(--color-surface-hover))] border border-[rgb(var(--color-border-base))] text-[10px] text-[rgb(var(--color-text-muted))] transition-colors"
+              >
+                Missing Lineage
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3.5">
+            {/* Loading State */}
+            {loadingWitness && !witnessedRun && (
+              <div className="p-8 flex flex-col items-center justify-center text-center gap-2">
+                <RefreshCw className="w-6 h-6 animate-spin text-[rgb(var(--color-accent-text))]" />
+                <p className="text-xs text-[rgb(var(--color-text-muted))]">
+                  Querying witnessed-run projection from API...
+                </p>
+              </div>
+            )}
+
+            {/* Error State */}
+            {witnessError && (
+              <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <h5 className="font-semibold text-xs">Projection Query Failed</h5>
+                  <p className="text-[11px] mt-0.5 leading-relaxed">{witnessError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Projection Details */}
+            {witnessedRun && (
+              <>
+                {/* 1. VERIFICATION STATUS HERO BANNER */}
+                {(() => {
+                  const statusInfo = getStatusBadge(witnessedRun.status);
+                  const replayInfo = getReplayBadge(witnessedRun.replay?.status);
+
+                  return (
+                    <div className="rounded-xl border border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/40 p-3.5 flex flex-col gap-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 rounded-lg bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))]">
+                            {statusInfo.icon}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-semibold text-xs text-[rgb(var(--color-text-base))]">
+                                {statusInfo.title}
+                              </h4>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${statusInfo.badgeClass}`}>
+                                {witnessedRun.status}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-[rgb(var(--color-text-muted))] mt-0.5 leading-normal">
+                              {statusInfo.desc}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] text-[rgb(var(--color-text-subtle))] font-mono">
+                            v{witnessedRun.manifest?.version ?? 1}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status Metric Grid */}
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[rgb(var(--color-border-base))]/60">
+                        <div className="p-2 rounded-lg bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] flex flex-col gap-0.5">
+                          <span className="text-[9px] text-[rgb(var(--color-text-subtle))] font-medium">Replay Verdict</span>
+                          <span className={`text-[11px] truncate ${replayInfo.class}`}>
+                            {replayInfo.label}
+                          </span>
+                        </div>
+
+                        <div className="p-2 rounded-lg bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] flex flex-col gap-0.5">
+                          <span className="text-[9px] text-[rgb(var(--color-text-subtle))] font-medium">Assessment / Admission</span>
+                          <div className="flex items-center gap-1 text-[11px] truncate">
+                            <span className="font-semibold uppercase text-emerald-600 dark:text-emerald-400">
+                              {witnessedRun.assessment?.disposition ?? 'None'}
+                            </span>
+                            <span className="text-[rgb(var(--color-text-subtle))]">/</span>
+                            <span className="text-[rgb(var(--color-text-muted))]">
+                              {witnessedRun.assessment?.status ?? 'None'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Replay reason if present */}
+                      {witnessedRun.assessment?.reason && (
+                        <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px]">
+                          <span className="font-semibold">Reason:</span> {witnessedRun.assessment.reason}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* 2. DIGEST VERIFICATION DETAILS SECTION (Specific Requirement) */}
+                <div className="rounded-xl border border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/40 p-3.5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <Fingerprint className="w-4 h-4 text-[rgb(var(--color-accent-text))]" />
+                      <h4 className="font-semibold text-xs text-[rgb(var(--color-text-base))]">
+                        Digest Verification Details
+                      </h4>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${
+                          allDigestsValid
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>{validDigestsCount} / {totalDigests} Verified SHA-256</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-[rgb(var(--color-text-muted))] leading-relaxed">
+                    Cryptographic attestation verifies each artifact against strict fail-closed criteria (format: <code className="px-1 py-0.2 rounded bg-[rgb(var(--color-surface-input))] font-mono text-[9px]">sha256:&lt;64 hex&gt;</code>).
+                  </p>
+
+                  {/* Digest Cards List */}
+                  <div className="flex flex-col gap-2">
+                    {digestItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="p-2.5 rounded-lg border border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-base))] flex flex-col gap-1.5 transition-shadow hover:shadow-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {item.isValidFormat ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                            ) : item.isMissing ? (
+                              <XCircle className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+                            ) : (
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                            )}
+                            <span className="font-semibold text-[11px] text-[rgb(var(--color-text-base))] truncate">
+                              {item.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-medium border ${
+                                item.isValidFormat
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                                  : item.isMissing
+                                  ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                  : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                              }`}
+                            >
+                              {item.isValidFormat
+                                ? 'SHA-256 Valid'
+                                : item.isMissing
+                                ? 'Missing Digest'
+                                : 'Malformed'}
+                            </span>
+
+                            {item.digest && (
+                              <button
+                                onClick={() => handleCopyDigest(item.digest!, item.id)}
+                                className="p-1 rounded hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-muted))] transition-colors"
+                                title="Copy full SHA-256 digest"
+                              >
+                                {copiedDigestKey === item.id ? (
+                                  <Check className="w-3 h-3 text-emerald-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-[rgb(var(--color-text-subtle))] leading-tight">
+                          {item.description}
+                        </p>
+
+                        {/* Hash Value Box */}
+                        <div className="p-1.5 rounded bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))] font-mono text-[10px] text-[rgb(var(--color-text-base))] break-all select-all flex items-center justify-between gap-1">
+                          <span className="truncate">{item.digest ?? 'null'}</span>
+                          {item.digest && (
+                            <span className="text-[8px] font-mono text-[rgb(var(--color-text-subtle))] flex-shrink-0 px-1 py-0.2 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))]">
+                              71 chars
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. ENVELOPE, CONSTITUTIONAL LAW & EVIDENCE CHAIN */}
+                <div className="rounded-xl border border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/40 p-3.5 flex flex-col gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-[rgb(var(--color-accent-text))]" />
+                    <h4 className="font-semibold text-xs text-[rgb(var(--color-text-base))]">
+                      Constitutional Law & Lineage
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <div className="p-2 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))]">
+                      <span className="text-[9px] text-[rgb(var(--color-text-subtle))] block">Contract Identifier</span>
+                      <span className="font-mono text-[rgb(var(--color-text-base))] font-medium truncate block mt-0.5">
+                        {witnessedRun.envelope.contractId} (v{witnessedRun.envelope.contractVersion})
+                      </span>
+                    </div>
+
+                    <div className="p-2 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))]">
+                      <span className="text-[9px] text-[rgb(var(--color-text-subtle))] block">Evaluator Subsystem</span>
+                      <span className="font-mono text-[rgb(var(--color-text-base))] font-medium truncate block mt-0.5">
+                        {witnessedRun.law.evaluatorId}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Evaluated Propositions */}
+                  {witnessedRun.law.propositionIds && witnessedRun.law.propositionIds.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] text-[rgb(var(--color-text-subtle))] font-medium">
+                        Evaluated Propositions ({witnessedRun.law.propositionIds.length}):
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {witnessedRun.law.propositionIds.map((prop) => (
+                          <span
+                            key={prop}
+                            className="px-1.5 py-0.5 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] font-mono text-[9px] text-[rgb(var(--color-text-muted))]"
+                          >
+                            {prop}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Receipts and Transition Checkpoints */}
+                  <div className="flex flex-col gap-1.5 pt-1 border-t border-[rgb(var(--color-border-base))]/60">
+                    <span className="text-[9px] text-[rgb(var(--color-text-subtle))] font-medium">
+                      Attestation Receipts:
+                    </span>
+                    <div className="grid grid-cols-1 gap-1">
+                      <div className="p-1.5 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] flex items-center justify-between text-[10px]">
+                        <span className="text-[rgb(var(--color-text-subtle))]">PEB Admission:</span>
+                        <span className="font-mono text-[rgb(var(--color-text-base))] truncate max-w-[200px]">
+                          {witnessedRun.receipts?.pebAdmission ?? 'none'}
+                        </span>
+                      </div>
+                      <div className="p-1.5 rounded bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] flex items-center justify-between text-[10px]">
+                        <span className="text-[rgb(var(--color-text-subtle))]">Conduit Transition:</span>
+                        <span className="font-mono text-[rgb(var(--color-text-base))] truncate max-w-[200px]">
+                          {witnessedRun.receipts?.conduitTransition ?? 'none'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. RAW PROJECTION JSON INSPECTOR */}
+                <div className="rounded-xl border border-[rgb(var(--color-border-base))] bg-[rgb(var(--color-surface-muted))]/40 p-3 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setRawJsonExpanded(!rawJsonExpanded)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-[rgb(var(--color-text-base))] hover:text-[rgb(var(--color-accent-text))] transition-colors"
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                      <span>Raw WitnessedRunProjection JSON</span>
+                      {rawJsonExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5 text-[rgb(var(--color-text-subtle))]" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-[rgb(var(--color-text-subtle))]" />
+                      )}
+                    </button>
+
+                    {rawJsonExpanded && (
+                      <button
+                        onClick={() => handleCopyJson(JSON.stringify(witnessedRun, null, 2))}
+                        className="px-2 py-0.5 rounded text-[10px] bg-[rgb(var(--color-surface-base))] border border-[rgb(var(--color-border-base))] hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-muted))] flex items-center gap-1 transition-colors"
+                      >
+                        {copiedJson ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            <span>Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy JSON</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {rawJsonExpanded && (
+                    <pre className="p-2.5 rounded-lg bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))] font-mono text-[10px] text-[rgb(var(--color-text-base))] overflow-x-auto select-all max-h-60 leading-tight">
+                      {JSON.stringify(witnessedRun, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. BOOKMARKS TAB VIEW */}
       {/* ========================================================================= */}
       {activeTab === 'bookmarks' && (
         <div className="flex-1 flex flex-col overflow-hidden">

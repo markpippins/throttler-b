@@ -55,6 +55,7 @@ import { groupItemsByType, GroupedItemsSection, CATEGORY_META } from '../utils/f
 import { QuickView } from './QuickView';
 import { TagBadge } from './TagBadge';
 import { PRESET_TAGS, getTagStyle, matchesFilter, parseFilterQuery } from '../utils/tagUtils';
+import { FileRow } from './FileRow';
 
 interface FileExplorerPaneProps {
   paneId: number;
@@ -1681,242 +1682,62 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
     const folderStats = item.type === 'folder' ? folderSizes.get(item.name) : undefined;
 
     return (
-      <React.Fragment key={item.name}>
-        {/* Before item drop indicator line */}
-        {isDropBefore && (
-          <tr className="pointer-events-none">
-            <td colSpan={isInTrash ? 6 : 5} className="p-0 relative h-0">
-              <div className="absolute inset-x-0 -top-0.5 h-1 bg-blue-500 rounded-full z-20 shadow-[0_0_8px_rgba(59,130,246,0.9)] flex items-center justify-between">
-                <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -ml-1" />
-                <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -mr-1" />
-              </div>
-            </td>
-          </tr>
-        )}
-        <tr
-          data-item-index={idx}
-          role="row"
-          aria-selected={isSelected}
-          tabIndex={isFocused ? 0 : -1}
-          draggable={!isRenaming}
-          onDragStart={(e) => handleDragStart(e, item)}
-          onDragEnd={handleDragEnd}
-          onDragOver={(e) => handleItemDragOver(e, item, idx, 'list')}
-          onDragLeave={(e) => handleItemDragLeave(e, item.name, idx)}
-          onDrop={(e) => handleItemDrop(e, item, idx)}
-          onClick={(e) => handleItemClick(e, item, idx)}
-          onDoubleClick={(e) => handleItemDoubleClick(e, item)}
-          onContextMenu={(e) => handleItemContextMenu(e, item)}
-          title={
-            isInTrash && item.originalPath && item.originalPath.length > 0
-              ? `${item.name}\nOriginal Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
-              : undefined
+      <FileRow
+        key={item.name}
+        item={item}
+        index={idx}
+        isSelected={isSelected}
+        isFocused={isFocused}
+        isRenaming={isRenaming}
+        renameValue={renameValue}
+        isHoverTarget={isHoverTarget}
+        isDragged={isDragged}
+        isDropBefore={isDropBefore}
+        isDropAfter={isDropAfter}
+        folderStats={folderStats}
+        isInTrash={isInTrash}
+        activeTagFilter={activeTagFilter}
+        renderHighlightedName={renderHighlightedName}
+        onSelectToggle={(it, e) => {
+          e.stopPropagation();
+          onActivate();
+          const next = new Set(selectedItems);
+          if (isSelected) {
+            next.delete(it.name);
+          } else {
+            next.add(it.name);
           }
-          className={`group cursor-pointer border-b border-[rgb(var(--color-border-base))]/40 transition-all ${
-            isDragged
-              ? 'opacity-40 bg-blue-500/10 border-dashed border-blue-400'
-              : isSelected
-              ? 'bg-[rgb(var(--color-accent-bg))] text-[rgb(var(--color-accent-text))] font-medium'
-              : isHoverTarget
-              ? 'bg-blue-500/25 ring-2 ring-blue-500 text-blue-600 font-semibold'
-              : isFocused
-              ? 'bg-blue-500/10 text-[rgb(var(--color-text-base))]'
-              : 'hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))]'
-          } ${
-            isFocused
-              ? 'ring-2 ring-blue-500 ring-offset-1 ring-offset-[rgb(var(--color-surface-base))] relative z-10'
-              : ''
-          }`}
-        >
-          <td className="py-2 pl-2 w-8 text-center select-none" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onActivate();
-                const next = new Set(selectedItems);
-                if (isSelected) {
-                  next.delete(item.name);
-                } else {
-                  next.add(item.name);
-                }
-                onSelectItems(next);
-                setFocusedIndex(idx);
-                setAnchorIndex(idx);
-                SoundService.playFileSelect();
-              }}
-              title={isSelected ? 'Deselect item' : 'Select item'}
-              className="p-1 rounded hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] hover:text-[rgb(var(--color-text-base))] transition-colors inline-flex items-center justify-center cursor-pointer"
-            >
-              {isSelected ? (
-                <CheckSquare className="w-3.5 h-3.5 text-blue-500" />
-              ) : (
-                <Square className="w-3.5 h-3.5 opacity-30 group-hover:opacity-75" />
-              )}
-            </button>
-          </td>
-          <td className="py-2 pl-1 flex items-center gap-2">
-            {getItemIcon(item, 'sm')}
-            {isRenaming ? (
-              <input
-                type="text"
-                autoFocus
-                value={renameValue}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onBlur={finishInlineRename}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') finishInlineRename();
-                  if (e.key === 'Escape') setRenamingItem(null);
-                }}
-                className="px-1 py-0.5 bg-[rgb(var(--color-surface-input))] border border-[rgb(var(--color-border-input))] rounded text-xs text-[rgb(var(--color-text-base))] outline-none"
-              />
-            ) : (
-              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                <span className="truncate max-w-xs" title={item.name}>
-                  {renderHighlightedName(item.name)}
-                </span>
-                {item.tags && item.tags.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap flex-shrink-0">
-                    {item.tags.map((tag) => (
-                      <TagBadge
-                        key={tag}
-                        tag={tag}
-                        size="xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onActivate();
-                          onTagFilterChange?.(activeTagFilter?.toLowerCase() === tag.toLowerCase() ? null : tag);
-                        }}
-                        active={activeTagFilter?.toLowerCase() === tag.toLowerCase()}
-                      />
-                    ))}
-                  </div>
-                )}
-                {!isInTrash && (item as SearchResultNode).path && (
-                  <span
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-300 font-mono flex-shrink-0"
-                    title={`Location: /${(item as SearchResultNode).path.join('/')}`}
-                  >
-                    <Folder className="w-2.5 h-2.5 text-blue-400" />
-                    <span className="truncate max-w-[130px]">/{(item as SearchResultNode).path.slice(0, -1).join('/')}</span>
-                  </span>
-                )}
-                {(item as SearchResultNode).snippet && (
-                  <span
-                    className="text-[10px] text-amber-600 dark:text-amber-400/90 truncate max-w-[180px] italic hidden sm:inline"
-                    title={(item as SearchResultNode).snippet}
-                  >
-                    "{(item as SearchResultNode).snippet}"
-                  </span>
-                )}
-                {!isInTrash && item.originalPath && (
-                  <span
-                    className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono flex-shrink-0"
-                    title={`Original location: /${item.originalPath.join('/')}`}
-                  >
-                    <RotateCcw className="w-2.5 h-2.5 text-amber-500" />
-                    <span className="truncate max-w-[120px]">/{item.originalPath.join('/')}</span>
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onActivate();
-                    setQuickViewItem(item);
-                    SoundService.playFileSelect();
-                  }}
-                  title={`Quick View "${item.name}" (Space)`}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-subtle))] hover:text-[rgb(var(--color-accent-text))] transition-opacity cursor-pointer flex-shrink-0"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-                {isHoverTarget && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded bg-blue-600 text-white font-medium shadow-sm">
-                    <FolderPlus className="w-3 h-3" />
-                    Move into folder
-                  </span>
-                )}
-              </div>
-            )}
-          </td>
-          {isInTrash && (
-            <td
-              className="py-2 text-[11px] text-[rgb(var(--color-text-muted))] font-mono max-w-[220px]"
-              title={
-                item.originalPath && item.originalPath.length > 0
-                  ? `Original Location: /${item.originalPath.join('/')}\nRestores to: /${item.originalPath.join('/')}/${item.name}`
-                  : 'Original location not recorded'
-              }
-            >
-              {item.originalPath && item.originalPath.length > 0 ? (
-                <div className="flex items-center gap-1.5 group/path">
-                  <span className="truncate text-amber-700 dark:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded text-[10px] border border-amber-500/20 max-w-[170px] inline-block font-medium">
-                    /{item.originalPath.join('/')}
-                  </span>
-                  {onRestore && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onActivate();
-                        onRestore([item.name]);
-                      }}
-                      title={`Restore "${item.name}" back to /${item.originalPath.join('/')}`}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition-opacity cursor-pointer flex-shrink-0"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <span className="text-[rgb(var(--color-text-subtle))]">--</span>
-              )}
-            </td>
-          )}
-          <td className="py-2 text-[rgb(var(--color-text-muted))] text-[11px]">
-            {item.modified ? new Date(item.modified).toLocaleDateString() : '--'}
-          </td>
-          <td
-            className="py-2 text-[rgb(var(--color-text-muted))] text-[11px] truncate max-w-[140px]"
-            title={
-              item.type === 'folder' && folderStats
-                ? `Folder (${folderStats.fileCount} ${folderStats.fileCount === 1 ? 'file' : 'files'}, ${folderStats.folderCount} subfolders)`
-                : getFileTypeDescription(item)
-            }
-          >
-            {getFileTypeDescription(item)}
-          </td>
-          <td
-            className="py-2 pr-2 text-right text-[rgb(var(--color-text-muted))] text-[11px] font-mono tabular-nums"
-            title={
-              item.type === 'folder'
-                ? folderStats
-                  ? `${item.name}: ${formatFileSize(folderStats.size, { detailed: true })}\n${folderStats.fileCount} ${folderStats.fileCount === 1 ? 'file' : 'files'}${folderStats.folderCount > 0 ? `, ${folderStats.folderCount} subfolders` : ''}`
-                  : 'Folder'
-                : formatFileSize(item.size, { detailed: true })
-            }
-          >
-            {item.type === 'file'
-              ? formatFileSize(item.size)
-              : folderStats
-              ? formatFileSize(folderStats.size)
-              : '--'}
-          </td>
-        </tr>
-        {/* After item drop indicator line */}
-        {isDropAfter && (
-          <tr className="pointer-events-none">
-            <td colSpan={isInTrash ? 6 : 5} className="p-0 relative h-0">
-              <div className="absolute inset-x-0 -bottom-0.5 h-1 bg-blue-500 rounded-full z-20 shadow-[0_0_8px_rgba(59,130,246,0.9)] flex items-center justify-between">
-                <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -ml-1" />
-                <div className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white -mr-1" />
-              </div>
-            </td>
-          </tr>
-        )}
-      </React.Fragment>
+          onSelectItems(next);
+          setFocusedIndex(idx);
+          setAnchorIndex(idx);
+          SoundService.playFileSelect();
+        }}
+        onClick={(e, it, i) => handleItemClick(e, it, i)}
+        onDoubleClick={(e, it) => handleItemDoubleClick(e, it)}
+        onContextMenu={(e, it) => handleItemContextMenu(e, it)}
+        onQuickView={(it) => {
+          onActivate();
+          setQuickViewItem(it);
+          SoundService.playFileSelect();
+        }}
+        onRestore={(it) => {
+          onActivate();
+          onRestore?.([it.name]);
+        }}
+        onTagClick={(tag, e) => {
+          e.stopPropagation();
+          onActivate();
+          onTagFilterChange?.(activeTagFilter?.toLowerCase() === tag.toLowerCase() ? null : tag);
+        }}
+        onRenameChange={setRenameValue}
+        onRenameSubmit={finishInlineRename}
+        onRenameCancel={() => setRenamingItem(null)}
+        onDragStart={(e, it) => handleDragStart(e, it)}
+        onDragEnd={handleDragEnd}
+        onDragOver={(e, it, i) => handleItemDragOver(e, it, i, 'list')}
+        onDragLeave={(e, it, i) => handleItemDragLeave(e, it.name, i)}
+        onDrop={(e, it, i) => handleItemDrop(e, it, i)}
+      />
     );
   };
 

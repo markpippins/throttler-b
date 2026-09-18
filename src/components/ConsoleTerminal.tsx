@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Terminal as TerminalIcon, X, Maximize2, Minimize2, Trash2 } from 'lucide-react';
 import { FileSystemNode } from '../types';
 import { VirtualFileSystem } from '../services/fileSystemService';
+import { apiService } from '../services/apiService';
 
 interface ConsoleTerminalProps {
   height: number;
@@ -64,7 +65,7 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
     return curr;
   };
 
-  const handleCommand = (rawCmd: string) => {
+  const handleCommand = async (rawCmd: string) => {
     const trimmed = rawCmd.trim();
     if (!trimmed) return;
 
@@ -97,7 +98,10 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
   date              Display current system timestamp
   search <query>    Full-text search across entire VFS via Bloom filter index
   find <query>      Alias for search
-  index-stats       Display search index and Bloom filter diagnostics`,
+  index-stats       Display search index and Bloom filter diagnostics
+  diagnostics       Fetch diagnostics from execution-srv (default port 4249)
+  witnessed-runs    Query backend-attested projection from execution-srv
+  api-mode [live|simulated]  Toggle or view execution-srv API mode`,
         });
         break;
 
@@ -286,6 +290,117 @@ export const ConsoleTerminal: React.FC<ConsoleTerminalProps> = ({
           newLogs.push({ id: (Date.now() + 1).toString(), type: 'error', text: 'index-stats: VFS service not available' });
         }
         break;
+      }
+
+      case 'api-mode': {
+        const mode = args[0]?.toLowerCase();
+        if (mode === 'live' || mode === 'on' || mode === 'true') {
+          apiService.setLive(true);
+          newLogs.push({
+            id: (Date.now() + 1).toString(),
+            type: 'output',
+            text: `Switched execution-srv API to LIVE mode (Base URL: ${apiService.getBaseUrl()})`,
+          });
+        } else if (mode === 'simulated' || mode === 'mock' || mode === 'off' || mode === 'false') {
+          apiService.setLive(false);
+          newLogs.push({
+            id: (Date.now() + 1).toString(),
+            type: 'output',
+            text: `Switched execution-srv API to SIMULATED mode`,
+          });
+        } else {
+          newLogs.push({
+            id: (Date.now() + 1).toString(),
+            type: 'output',
+            text: `Execution API Configuration:
+  Mode:       ${apiService.isLive() ? 'LIVE (connecting to execution-srv)' : 'SIMULATED (local mock fallback)'}
+  Base URL:   ${apiService.getBaseUrl()}
+  Default:    Port 4249 (env: VITE_USE_LIVE_API, VITE_EXECUTION_SRV_PORT)
+  Usage:      api-mode [live|simulated]`,
+          });
+        }
+        break;
+      }
+
+      case 'diagnostics': {
+        newLogs.push({
+          id: (Date.now() + 1).toString(),
+          type: 'output',
+          text: `Querying diagnostics from execution-srv (${apiService.isLive() ? 'LIVE' : 'SIMULATED'} @ ${apiService.getBaseUrl()})...`,
+        });
+        setLogs(newLogs);
+        try {
+          const diag = await apiService.fetchDiagnostics();
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 2).toString(),
+              type: 'output',
+              text: `[execution-srv diagnostics]
+  Service:    ${diag.service} (v${diag.version})
+  Status:     ${diag.status}
+  Mode:       ${diag.live ? 'LIVE API (backend-attested)' : 'SIMULATED (local)'}
+  Port:       ${diag.port}
+  Base URL:   ${apiService.getBaseUrl()}
+  Timestamp:  ${diag.timestamp}
+  Subsystems:
+    • SOL/SOLScript: ${diag.subsystems.solscript?.status ?? 'unknown'}
+    • Aegis:         ${diag.subsystems.aegis?.status ?? 'unknown'}
+    • Projections:   ${diag.subsystems.projections?.status ?? 'unknown'}
+    • Vision:        ${diag.subsystems.vision?.status ?? 'unknown'}`,
+            },
+          ]);
+        } catch (err) {
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 2).toString(),
+              type: 'error',
+              text: `diagnostics error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ]);
+        }
+        return;
+      }
+
+      case 'witnessed-runs': {
+        const wfId = args[0] || 'wf-live-demo-1';
+        const nodeId = args[1] || 'node:rename-item-alpha';
+        newLogs.push({
+          id: (Date.now() + 1).toString(),
+          type: 'output',
+          text: `Querying witnessed-run projection (wf=${wfId}, node=${nodeId}) from execution-srv (${apiService.isLive() ? 'LIVE' : 'SIMULATED'})...`,
+        });
+        setLogs(newLogs);
+        try {
+          const proj = await apiService.fetchWitnessedRun({ workflowInstanceId: wfId, nodeId });
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 2).toString(),
+              type: 'output',
+              text: `[witnessed-run projection]
+  Workflow:    instanceId=${proj.workflow.instanceId}, nodeId=${proj.workflow.nodeId}
+  Status:      ${proj.status}
+  Envelope:    id=${proj.envelope.id ?? 'none'}, fp=${proj.envelope.evaluationFingerprint ?? 'none'}
+  Contract:    ${proj.envelope.contractId ?? 'none'} (v${proj.envelope.contractVersion ?? '?'})
+  Law:         props=[${proj.law.propositionIds.join(', ')}], doctrines=[${proj.law.doctrineIds.join(', ')}]
+  Assessment:  disposition=${proj.assessment.disposition ?? 'none'}, status=${proj.assessment.status ?? 'none'}
+  Receipts:    peb=${proj.receipts.pebAdmission ?? 'none'}, conduit=${proj.receipts.conduitTransition ?? 'none'}
+  Evidence:    count=${proj.evidence.ids.length}, fp=${proj.evidence.fingerprint ?? 'none'}`,
+            },
+          ]);
+        } catch (err) {
+          setLogs((prev) => [
+            ...prev,
+            {
+              id: (Date.now() + 2).toString(),
+              type: 'error',
+              text: `witnessed-runs error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ]);
+        }
+        return;
       }
 
       default:

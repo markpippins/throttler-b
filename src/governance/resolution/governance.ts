@@ -15,6 +15,7 @@ export interface ResolutionEvidence {
   guards: GuardEvaluationResult[];
   receipt?: ExecutionReceipt;
   read_set_digest: string;
+  fingerprint?: string;
   recorded_at: string;
 }
 
@@ -59,6 +60,7 @@ export class ResolutionGovernanceLedger {
       guards,
       receipt,
       read_set_digest: readSetDigest,
+      fingerprint: readSetDigest,
       recorded_at: new Date().toISOString(),
     };
     this.evidenceLog.push(evidence);

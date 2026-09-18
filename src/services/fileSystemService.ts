@@ -233,13 +233,17 @@ export function deepCloneNode(node: FileSystemNode): FileSystemNode {
 export class VirtualFileSystem {
   private root: FileSystemNode;
   private searchIndex: VfsSearchIndex = new VfsSearchIndex();
+  private enablePersistence: boolean = true;
 
-  constructor(initialRoot?: FileSystemNode) {
+  constructor(initialRoot?: FileSystemNode, enablePersistence: boolean = true) {
+    this.enablePersistence = enablePersistence;
     if (initialRoot) {
       this.root = deepCloneNode(initialRoot);
-    } else {
+    } else if (enablePersistence) {
       const stored = StorageService.getLocalItem<FileSystemNode | null>(FS_STORAGE_KEY, null);
       this.root = stored ? deepCloneNode(stored) : deepCloneNode(DEFAULT_ROOT_NODE);
+    } else {
+      this.root = deepCloneNode(DEFAULT_ROOT_NODE);
     }
     this.ensureTrashFolder();
     this.searchIndex.indexTree(this.root);
@@ -308,7 +312,9 @@ export class VirtualFileSystem {
   }
 
   private persist(): void {
-    StorageService.setLocalItem(FS_STORAGE_KEY, this.root);
+    if (this.enablePersistence) {
+      StorageService.setLocalItem(FS_STORAGE_KEY, this.root);
+    }
     this.searchIndex.indexTree(this.root);
   }
 

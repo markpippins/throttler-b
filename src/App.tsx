@@ -42,6 +42,7 @@ import { matchesFilter } from './utils/tagUtils';
 import { createGovernedDirector } from './governance/adapters/throttlerVfsAdapter';
 import { RenameItemInteraction, SHRAPNEL_REVISIONS } from './governance/shrapnel/types';
 import { runGovernancePilotTests } from './governance/tests/runPilotTests';
+import { apiService } from './services/apiService';
 
 const BOOKMARKS_STORAGE_KEY = 'file-explorer-bookmarks';
 
@@ -55,12 +56,24 @@ export const App: React.FC = () => {
 
   // Run pilot parity & refusal tests once on bootstrap
   useEffect(() => {
+    // Clean up any test artifact folders if leaked into root from previous test runs
+    if (vfsRef.current.getNode(['TestDocs'])) {
+      vfsRef.current.deleteItem([], 'TestDocs', true);
+      setRootNode(vfsRef.current.getRoot());
+    }
+
     runGovernancePilotTests().then(res => {
       if (res.allPassed) {
         console.log('🛡️ [SOL / §10 / Aegis / Shrapnel] Governed Pilot Tests:\n' + res.logs.join('\n'));
       } else {
         console.error('❌ [SOL / §10 / Aegis / Shrapnel] Pilot Tests Failed:\n' + res.logs.join('\n'));
       }
+    });
+
+    apiService.fetchDiagnostics().then(diag => {
+      console.log(`🔌 [execution-srv] Projections API ready (${diag.live ? 'LIVE' : 'SIMULATED'} @ ${apiService.getBaseUrl()}) [status: ${diag.status}]`);
+    }).catch(err => {
+      console.warn(`⚠️ [execution-srv] Diagnostics query failed: ${err instanceof Error ? err.message : String(err)}`);
     });
   }, []);
 

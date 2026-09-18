@@ -8,6 +8,39 @@ import { SolStoragePort, ReadSetSnapshot, NormalizedNode } from '../solscript/po
 import { VisionExecutionSubstrate } from '../vision/executor';
 import { ResolutionGovernanceLedger } from '../resolution/governance';
 import { GovernedDirector } from '../director';
+import { sha256Hex } from '@nexus/solscript';
+import { isValidSha256Digest } from '@nexus/projection-core';
+
+/**
+ * Computes a standard sha256-prefixed hash string conforming to
+ * @nexus/projection-core and the witness system: `sha256:<64 lowercase hex chars>`.
+ */
+export async function computeSha256Digest(content: string): Promise<string> {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle?.digest) {
+    try {
+      const buffer = await globalThis.crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(content)
+      );
+      const hex = Array.from(new Uint8Array(buffer), (b) => b.toString(16).padStart(2, '0')).join('');
+      const digest = `sha256:${hex}`;
+      if (isValidSha256Digest(digest)) {
+        return digest;
+      }
+    } catch {
+      // Fallback to pure JS sha256Hex below
+    }
+  }
+  return computeSha256DigestSync(content);
+}
+
+/**
+ * Synchronous fallback / deterministic sha256 digest generator.
+ */
+export function computeSha256DigestSync(content: string): string {
+  const hex = sha256Hex(content);
+  return `sha256:${hex}`;
+}
 
 export class ThrottlerVfsStorageAdapter implements SolStoragePort {
   constructor(private vfs: VirtualFileSystem) {}
@@ -26,13 +59,9 @@ export class ThrottlerVfsStorageAdapter implements SolStoragePort {
     }));
 
     // Compute a deterministic content digest over sibling names and modified dates
+    // Formatted strictly as sha256:<64 hex chars> matching @nexus/projection-core / witness requirements
     const digestRaw = nodes.map(n => `${n.name}:${n.modified}`).sort().join('|');
-    let hash = 0;
-    for (let i = 0; i < digestRaw.length; i++) {
-      hash = (hash << 5) - hash + digestRaw.charCodeAt(i);
-      hash |= 0;
-    }
-    const digest = `sha256:${Math.abs(hash).toString(16).padStart(8, '0')}`;
+    const digest = await computeSha256Digest(digestRaw);
 
     return {
       parentPath: [...path],

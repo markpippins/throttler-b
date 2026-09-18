@@ -4,8 +4,10 @@
  */
 
 import { VirtualFileSystem } from '../../services/fileSystemService';
-import { createGovernedDirector } from '../adapters/throttlerVfsAdapter';
+import { FileSystemNode } from '../../types';
+import { createGovernedDirector, ThrottlerVfsStorageAdapter } from '../adapters/throttlerVfsAdapter';
 import { RenameItemInteraction, SHRAPNEL_REVISIONS } from '../shrapnel/types';
+import { isValidSha256Digest } from '@nexus/projection-core';
 
 export async function runGovernancePilotTests(): Promise<{
   allPassed: boolean;
@@ -16,8 +18,15 @@ export async function runGovernancePilotTests(): Promise<{
 
   log('=== Starting Governed RenameItem Pilot Tests ===');
 
-  // Initialize a mock VFS in-memory
-  const vfs = new VirtualFileSystem();
+  // Initialize a fresh, isolated mock VFS in-memory (persistence disabled to avoid localStorage state pollution)
+  const initialTestRoot: FileSystemNode = {
+    name: 'Local Session',
+    type: 'folder',
+    modified: new Date().toISOString(),
+    children: [],
+    childrenLoaded: true,
+  };
+  const vfs = new VirtualFileSystem(initialTestRoot, false);
   // Ensure we have a sample folder with files
   vfs.createFolder([], 'TestDocs');
   vfs.createFile(['TestDocs'], 'alpha.txt', 'Content alpha');
@@ -41,14 +50,22 @@ export async function runGovernancePilotTests(): Promise<{
 
   const result1 = await director.executeRename(interaction1);
   if (result1.status !== 'completed') {
-    log(`❌ Test 1 failed: Expected 'completed' status, got '${result1.status}'`);
+    log(`❌ Test 1 failed: Expected 'completed' status, got '${result1.status}' (reason: ${result1.refusal_reason || 'none'})`);
     return { allPassed: false, logs };
   }
   if (!result1.keychain_checkpoint) {
     log('❌ Test 1 failed: Missing Keychains checkpoint.');
     return { allPassed: false, logs };
   }
-  log(`  ✔ Test 1 Passed: Transition completed. Keychain checkpoint: ${result1.keychain_checkpoint.checkpoint_id}`);
+  if (!result1.evidence || !isValidSha256Digest(result1.evidence.read_set_digest)) {
+    log(`❌ Test 1 failed: Evidence read_set_digest does not match sha256 format: ${result1.evidence?.read_set_digest}`);
+    return { allPassed: false, logs };
+  }
+  if (!isValidSha256Digest(result1.keychain_checkpoint.read_set_digest)) {
+    log(`❌ Test 1 failed: Keychain checkpoint read_set_digest does not match sha256 format: ${result1.keychain_checkpoint.read_set_digest}`);
+    return { allPassed: false, logs };
+  }
+  log(`  ✔ Test 1 Passed: Transition completed. Keychain checkpoint: ${result1.keychain_checkpoint.checkpoint_id} (digest: ${result1.evidence.read_set_digest.slice(0, 18)}...)`);
 
   // Test 2: Sibling Collision Refusal (Renaming "alpha_v2.txt" to existing "beta.txt")
   log('[Test 2] Sibling Collision Refusal: Attempting rename to "beta.txt"');
@@ -117,6 +134,20 @@ export async function runGovernancePilotTests(): Promise<{
   }
   log(`  ✔ Test 4 Passed: Refused by target_exists guard. Reason: "${result4.refusal_reason}"`);
 
-  log(`=== All 4 Pilot Tests Passed! Evidence records: ${ledger.getRecentEvidence().length}, Checkpoints: ${ledger.getRecentCheckpoints().length} ===`);
+  // Test 5: VFS Adapter SHA-256 Digest Format Conformance
+  log('[Test 5] VFS Adapter SHA-256 Digest Format Conformance');
+  const storageAdapter = new ThrottlerVfsStorageAdapter(vfs);
+  const readSet = await storageAdapter.getDirectoryReadSet(['TestDocs']);
+  if (!isValidSha256Digest(readSet.digest)) {
+    log(`❌ Test 5 failed: VFS adapter digest does not conform to sha256 format: ${readSet.digest}`);
+    return { allPassed: false, logs };
+  }
+  if (!readSet.digest.startsWith('sha256:') || readSet.digest.length !== 71) {
+    log(`❌ Test 5 failed: Digest length or prefix mismatch (expected 71 chars starting with sha256:), got: ${readSet.digest}`);
+    return { allPassed: false, logs };
+  }
+  log(`  ✔ Test 5 Passed: VFS readSet digest conforms to @nexus/projection-core: ${readSet.digest}`);
+
+  log(`=== All 5 Pilot Tests Passed! Evidence records: ${ledger.getRecentEvidence().length}, Checkpoints: ${ledger.getRecentCheckpoints().length} ===`);
   return { allPassed: true, logs };
 }

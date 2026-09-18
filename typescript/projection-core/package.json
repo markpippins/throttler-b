@@ -1,0 +1,25 @@
+{
+  "name": "@nexus/projection-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "example:compile": "tsx example/usage.ts",
+    "example:adapter": "tsx example/adapter-example.ts",
+    "test:replay": "tsx scripts/run-replay-conformance.ts",
+    "test:witnessed-run": "tsx scripts/run-witnessed-run-conformance.ts",
+    "test:doctrine-lookup": "tsx scripts/run-doctrine-lookup-conformance.ts",
+    "test:doctrine-lookup-pg": "tsx scripts/run-doctrine-lookup-pg-conformance.ts",
+    "test:doctrine-lookup-registry": "tsx scripts/run-doctrine-lookup-registry-conformance.ts",
+    "test:contract-catalog": "tsx scripts/run-contract-catalog-conformance.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "tsx": "^4.7.0"
+  },
+  "dependencies": {
+    "@nexus/solscript": "file:../solscript"
+  }
+}

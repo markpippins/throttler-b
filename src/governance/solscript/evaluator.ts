@@ -2,9 +2,16 @@
  * SOLScript Semantic Evaluator
  * Evaluates deterministic `check` guards over a pinned read-set.
  * Authoritatively constructs and authorizes typed invocation requests.
+ * Delegates guard evaluation via the SolScript ResolutionInterpreter.
  */
 
-import { GuardDefinition, RENAME_ITEM_GUARDS } from '../aegis/registry';
+import {
+  ResolutionInterpreter,
+  Entity,
+  Concept,
+  Rule,
+} from '@nexus/solscript';
+import { RENAME_ITEM_GUARDS } from '../aegis/registry';
 import { RenameItemInteraction } from '../shrapnel/types';
 import { SolStoragePort, ReadSetSnapshot } from './port';
 
@@ -46,10 +53,116 @@ export interface EvaluationOutcome {
 const ILLEGAL_CHARS_REGEX = /[\\/:*?"<>|]/;
 
 export class SolScriptEvaluator {
-  constructor(private storagePort: SolStoragePort) {}
+  public readonly interpreter: ResolutionInterpreter;
+
+  constructor(
+    private storagePort: SolStoragePort,
+    interpreter?: ResolutionInterpreter
+  ) {
+    this.interpreter = interpreter ?? new ResolutionInterpreter();
+    this.initInterpreter();
+  }
+
+  private initInterpreter(): void {
+    // 1. Register FileMutationSubject concept and its formal attributes
+    const concept: Concept = {
+      id: 'concept:file_mutation_subject',
+      name: 'FileMutationSubject',
+      description: 'File mutation subject context for RenameItem guards',
+      attributes: {
+        'attr:new_name': {
+          id: 'attr:new_name',
+          conceptId: 'concept:file_mutation_subject',
+          name: 'new_name',
+          valueType: 'string',
+          isStateAttribute: false,
+          allowedValues: [],
+        },
+        'attr:old_name': {
+          id: 'attr:old_name',
+          conceptId: 'concept:file_mutation_subject',
+          name: 'old_name',
+          valueType: 'string',
+          isStateAttribute: false,
+          allowedValues: [],
+        },
+        'attr:target_exists': {
+          id: 'attr:target_exists',
+          conceptId: 'concept:file_mutation_subject',
+          name: 'target_exists',
+          valueType: 'boolean',
+          isStateAttribute: false,
+          allowedValues: [],
+        },
+        'attr:sibling_collision': {
+          id: 'attr:sibling_collision',
+          conceptId: 'concept:file_mutation_subject',
+          name: 'sibling_collision',
+          valueType: 'boolean',
+          isStateAttribute: false,
+          allowedValues: [],
+        },
+        'attr:storage_writable': {
+          id: 'attr:storage_writable',
+          conceptId: 'concept:file_mutation_subject',
+          name: 'storage_writable',
+          valueType: 'boolean',
+          isStateAttribute: false,
+          allowedValues: [],
+        },
+      },
+      relationships: {},
+      invariants: [],
+      derivations: [],
+      stateTransitions: [],
+      rules: [],
+    };
+    this.interpreter.addConcept(concept);
+
+    // 2. Register guard checking function bindings
+    this.interpreter.registerFunction('check_valid_name_syntax', (newName: unknown) => {
+      const name = typeof newName === 'string' ? newName : (newName ? String(newName) : '');
+      const trimmed = name.trim();
+      if (!trimmed) {
+        throw new Error('Filename cannot be empty or whitespace only.');
+      }
+      if (ILLEGAL_CHARS_REGEX.test(trimmed)) {
+        throw new Error(`Filename contains illegal characters: ${name}`);
+      }
+      return true;
+    });
+
+    this.interpreter.registerFunction('check_target_exists', (targetExists: unknown, oldName: unknown) => {
+      if (!targetExists) {
+        throw new Error(`Target item '${oldName ?? ''}' does not exist in the active directory snapshot.`);
+      }
+      return true;
+    });
+
+    this.interpreter.registerFunction('check_unique_sibling_name', (siblingCollision: unknown, newName: unknown) => {
+      if (siblingCollision) {
+        const name = typeof newName === 'string' ? newName.trim() : (newName ? String(newName).trim() : '');
+        throw new Error(`A sibling item named '${name}' already exists in this folder.`);
+      }
+      return true;
+    });
+
+    this.interpreter.registerFunction('check_storage_writable', (storageWritable: unknown) => {
+      if (!storageWritable) {
+        throw new Error('Target directory or storage profile is mounted as read-only.');
+      }
+      return true;
+    });
+
+    // 3. Register rules on interpreter
+    for (const rule of Object.values(RENAME_ITEM_GUARDS)) {
+      this.interpreter.rules.set(rule.id, rule);
+    }
+  }
 
   /**
-   * Deterministically evaluate all check guards for RenameItem against pinned read-set.
+   * Deterministically evaluate all check guards for RenameItem against pinned read-set
+   * by delegating to the ResolutionInterpreter.
    */
   async evaluateRename(
     interaction: RenameItemInteraction,
@@ -59,120 +172,81 @@ export class SolScriptEvaluator {
     const timestamp = new Date().toISOString();
     const digest = pinnedReadSet.digest;
 
-    // 1. check valid_name_syntax
     const newName = interaction.payload.new_name;
+    const oldName = interaction.payload.old_name;
     const trimmed = newName ? newName.trim() : '';
 
-    if (!trimmed || ILLEGAL_CHARS_REGEX.test(trimmed)) {
-      const refused: GuardEvaluationResult = {
-        kind: 'guard-evaluation',
-        guard_id: RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX.id,
-        condition: RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX.condition,
-        result: 'refused',
-        reason: !trimmed
-          ? 'Filename cannot be empty or whitespace only.'
-          : `Filename contains illegal characters: ${newName}`,
-        read_set_digest: digest,
-        evaluator: 'solscript-evaluator',
-        timestamp,
-      };
-      return { allowed: false, refusedGuard: refused, passedGuards };
-    }
-
-    passedGuards.push({
-      kind: 'guard-evaluation',
-      guard_id: RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX.id,
-      condition: RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX.condition,
-      result: 'passed',
-      read_set_digest: digest,
-      evaluator: 'solscript-evaluator',
-      timestamp,
-    });
-
-    // 2. check target_exists
-    const oldName = interaction.payload.old_name;
+    // Inspect pinnedReadSet and storagePort for subject attributes
     const targetNode = pinnedReadSet.nodes.find(n => n.name === oldName);
+    const targetExists = Boolean(targetNode);
 
-    if (!targetNode) {
-      const refused: GuardEvaluationResult = {
-        kind: 'guard-evaluation',
-        guard_id: RENAME_ITEM_GUARDS.TARGET_EXISTS.id,
-        condition: RENAME_ITEM_GUARDS.TARGET_EXISTS.condition,
-        result: 'refused',
-        reason: `Target item '${oldName}' does not exist in the active directory snapshot.`,
-        read_set_digest: digest,
-        evaluator: 'solscript-evaluator',
-        timestamp,
-      };
-      return { allowed: false, refusedGuard: refused, passedGuards };
-    }
+    // Sibling collision check (unless renaming to identical name)
+    const collision = (trimmed !== oldName) && Boolean(
+      pinnedReadSet.nodes.find(
+        n => n.name.toLowerCase() === trimmed.toLowerCase() && (!targetNode || n.id !== targetNode.id)
+      )
+    );
 
-    passedGuards.push({
-      kind: 'guard-evaluation',
-      guard_id: RENAME_ITEM_GUARDS.TARGET_EXISTS.id,
-      condition: RENAME_ITEM_GUARDS.TARGET_EXISTS.condition,
-      result: 'passed',
-      read_set_digest: digest,
-      evaluator: 'solscript-evaluator',
-      timestamp,
-    });
+    // Storage writable check
+    const isWritable = await this.storagePort.isStorageWritable(interaction.context.source_path);
 
-    // 3. check unique_sibling_name (unless renaming to identical name)
-    if (trimmed !== oldName) {
-      const collision = pinnedReadSet.nodes.find(
-        n => n.name.toLowerCase() === trimmed.toLowerCase() && n.id !== targetNode.id
-      );
+    // Build the SolScript Entity representing the subject under evaluation
+    const subjectEntity: Entity = {
+      id: targetNode ? targetNode.id : `subject:${interaction.subject.id || oldName}`,
+      conceptId: 'concept:file_mutation_subject',
+      attributes: {
+        new_name: newName,
+        old_name: oldName,
+        target_exists: targetExists,
+        sibling_collision: collision,
+        storage_writable: isWritable,
+      },
+    };
 
-      if (collision) {
+    // Update entity in the interpreter
+    this.interpreter.addEntity(subjectEntity);
+
+    // The formal SolScript Rule objects to evaluate in deterministic sequence
+    const guards: Rule[] = [
+      RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX,
+      RENAME_ITEM_GUARDS.TARGET_EXISTS,
+      RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME,
+      RENAME_ITEM_GUARDS.STORAGE_WRITABLE,
+    ];
+
+    for (const rule of guards) {
+      // Delegate rule evaluation to the ResolutionInterpreter
+      const [passed, checkMessage] = this.interpreter.checkRule(rule, subjectEntity);
+
+      if (!passed) {
+        const reason = this.extractReason(checkMessage);
         const refused: GuardEvaluationResult = {
           kind: 'guard-evaluation',
-          guard_id: RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME.id,
-          condition: RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME.condition,
+          guard_id: rule.id,
+          condition: (rule as any).condition || rule.name,
           result: 'refused',
-          reason: `A sibling item named '${trimmed}' already exists in this folder.`,
+          reason,
           read_set_digest: digest,
           evaluator: 'solscript-evaluator',
           timestamp,
         };
         return { allowed: false, refusedGuard: refused, passedGuards };
       }
-    }
 
-    passedGuards.push({
-      kind: 'guard-evaluation',
-      guard_id: RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME.id,
-      condition: RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME.condition,
-      result: 'passed',
-      read_set_digest: digest,
-      evaluator: 'solscript-evaluator',
-      timestamp,
-    });
-
-    // 4. check storage_writable
-    const isWritable = await this.storagePort.isStorageWritable(interaction.context.source_path);
-    if (!isWritable) {
-      const refused: GuardEvaluationResult = {
+      passedGuards.push({
         kind: 'guard-evaluation',
-        guard_id: RENAME_ITEM_GUARDS.STORAGE_WRITABLE.id,
-        condition: RENAME_ITEM_GUARDS.STORAGE_WRITABLE.condition,
-        result: 'refused',
-        reason: 'Target directory or storage profile is mounted as read-only.',
+        guard_id: rule.id,
+        condition: (rule as any).condition || rule.name,
+        result: 'passed',
         read_set_digest: digest,
         evaluator: 'solscript-evaluator',
         timestamp,
-      };
-      return { allowed: false, refusedGuard: refused, passedGuards };
+      });
     }
 
-    passedGuards.push({
-      kind: 'guard-evaluation',
-      guard_id: RENAME_ITEM_GUARDS.STORAGE_WRITABLE.id,
-      condition: RENAME_ITEM_GUARDS.STORAGE_WRITABLE.condition,
-      result: 'passed',
-      read_set_digest: digest,
-      evaluator: 'solscript-evaluator',
-      timestamp,
-    });
+    if (!targetNode) {
+      throw new Error('Unexpected state: targetNode missing after passing TARGET_EXISTS guard.');
+    }
 
     // All guards passed! Authorize typed invocation request.
     const invocationRequest: AuthorizedInvocationRequest<{
@@ -202,4 +276,13 @@ export class SolScriptEvaluator {
       invocationRequest,
     };
   }
+
+  private extractReason(message: string): string {
+    const errorPrefixMatch = message.match(/^Rule '[^']+' (?:error|soft error): (.*)$/);
+    if (errorPrefixMatch) {
+      return errorPrefixMatch[1];
+    }
+    return message;
+  }
 }
+
