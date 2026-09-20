@@ -134,7 +134,158 @@ bun run dev          # dev server on :4298
 
 ---
 
-## 6. Notes
+## 6. Throttler Surface Absorption & Widget Registry
+
+Throttler incorporates a dedicated surface absorption and ontological projection layer (`src/surface/`) that discovers, catalogs, and injects components from `angular/` subfolders directly into the `@nexus/projection-core` runtime.
+
+```
+src/surface/
+├── registry/                      # Subfolder scanner & dynamic manifest registry
+│   ├── manifest.ts                # Schemas: WidgetManifestEntry, SubfolderCatalogManifest, etc.
+│   ├── scanner.ts                 # Source AST/regex scanner discovering angular/ subfolder relics
+│   ├── projectionBridge.ts        # Dynamic bridge injecting widgets into @nexus/projection-core
+│   ├── registryStore.ts           # widgetRegistryManager singleton & query engine
+│   └── index.ts                   # Public barrel exports
+├── relics/
+│   └── HarvestedRelics.tsx        # 10 harvested interactive relics from angular/surface-ui
+├── components/
+│   ├── WidgetRegistryView.tsx     # Full-screen visual subfolder registry & manifest inspector
+│   ├── ViewSpecStudioView.tsx     # ViewSpec spatial layout switchboard & compiler
+│   ├── GovernanceWorkbenchView.tsx# SolScript governance & keychain checkpoint inspector
+│   └── OperatorPersonaPanel.tsx   # Interactive operator persona co-pilot
+├── widgetAbsorption.ts            # High-level absorption service & ontological space map
+├── SurfaceRecomposedView.tsx      # Multi-tab ontological surface recomposition container
+└── types.ts                       # Ontological node, relic archetype, and surface tab types
+```
+
+---
+
+## 7. Widget Registry Usage & Assimilation Guide
+
+### 7.1 Manifest Architecture
+
+Every component exported from an `angular/` subfolder is mapped to a strongly typed `WidgetManifestEntry`:
+
+```typescript
+import type { WidgetManifestEntry } from './surface/registry';
+
+// Example entry structure
+const entry: WidgetManifestEntry = {
+  id: 'surface-ui-sparkline',
+  name: 'Sparkline Metric Monitor',
+  componentName: 'Sparkline',
+  exportName: 'default',
+  subfolder: 'surface-ui',
+  sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+  archetype: 'data-vis',
+  capabilities: ['MetricSeries'],
+  inputs: [
+    { name: 'data', type: 'number[]', defaultValue: [14, 21, 19, 27], required: true },
+    { name: 'color', type: 'string', defaultValue: '#3b82f6' }
+  ],
+  endpoints: [
+    { raw: 'GET /api/telemetry/timeseries', method: 'GET', signature: '/api/telemetry/timeseries' }
+  ],
+  tags: ['telemetry', 'chart', 'metrics'],
+  projectionConfig: {
+    defaultDensity: 'compact',
+    defaultLayout: 'main',
+    variants: ['default', 'compact', 'live'],
+    events: ['click', 'pointSelect']
+  }
+};
+```
+
+### 7.2 Programmatic Usage
+
+#### Accessing the Registry Manager
+```typescript
+import { widgetRegistryManager } from './surface/registry';
+
+// 1. Get current master manifest
+const manifest = widgetRegistryManager.getManifest();
+console.log(`Discovered ${manifest.stats.totalWidgets} widgets across ${manifest.stats.totalSubfolders} subfolders`);
+
+// 2. Query widgets by capability, archetype, or subfolder
+const telemetryWidgets = widgetRegistryManager.getWidgetsByCapability('MetricSeries');
+const dataVisRelics = widgetRegistryManager.getWidgetsByArchetype('data-vis');
+const surfaceWidgets = widgetRegistryManager.getWidgetsBySubfolder('surface-ui');
+
+// 3. Search catalog
+const searchResults = widgetRegistryManager.searchWidgets('gauge');
+
+// 4. Trigger a rescan of all angular/ subfolders
+const freshManifest = widgetRegistryManager.rescan({ forceRefresh: true });
+
+// 5. Subscribe to reactive updates
+const unsubscribe = widgetRegistryManager.subscribe((updatedManifest) => {
+  console.log('Registry manifest updated:', updatedManifest.stats);
+});
+```
+
+#### Dynamically Injecting into `@nexus/projection-core`
+```typescript
+import { WidgetCatalog, WidgetRegistry } from '@nexus/projection-core';
+import { injectManifestIntoProjectionCore } from './surface/registry';
+
+const catalog = new WidgetCatalog();
+const registry = new WidgetRegistry();
+
+// Inject entire manifest into projection-core's runtime
+const audit = injectManifestIntoProjectionCore(manifest, {
+  catalog,
+  registry
+});
+
+console.log(`Successfully bound ${audit.registeredCount} widgets into projection-core catalog`);
+```
+
+### 7.3 Adding and Assimilating New `angular/` Subfolders
+
+As new subfolders are added to `angular/` (e.g. `angular/analytics-ui`, `angular/operator-ui`), they can be assimilated automatically or declared via the registry:
+
+#### Option A: Auto-Discovery & Scanning
+1. Place components in `angular/<your-subfolder>/` with standard TypeScript/JavaScript exports:
+   ```typescript
+   // angular/analytics-ui/src/components/NetworkLatency.tsx
+   // API: GET /api/network/latency
+   export default function NetworkLatency({ samples, pingRate }) {
+     // ...
+   }
+   ```
+2. The scanner recognizes:
+   - `export default function <Name>` or `export const <Name>`
+   - `// API: [METHOD] [SIGNATURE]` inline comments
+   - Archetype heuristics from naming conventions (`Gauge`, `Table`, `Console`, `Dial`, `Kanban`, `Sparkline`, etc.)
+   - Corresponding projection-core capabilities (`MetricSeries`, `KeyMetricMatrix`, etc.)
+
+#### Option B: Dynamic Runtime Registration
+Call `addAndScanSubfolder()` from anywhere in the application or use the UI:
+```typescript
+import { widgetRegistryManager } from './surface/registry';
+
+widgetRegistryManager.addAndScanSubfolder({
+  subfolder: 'analytics-ui',
+  path: 'angular/analytics-ui',
+  displayName: 'Analytics Visualizer Suite',
+  description: 'Real-time telemetry and network diagnostic widgets',
+  version: '1.0.0'
+});
+```
+
+### 7.4 UI Navigation & Interactive Registry
+
+1. **Ontological Address Bar**: Click the surface button in the address bar or navigate to `onto://surface-ui/registry`.
+2. **Subfolder Registry Tab**:
+   - Inspect all discovered widgets, source paths, and exports.
+   - Filter by subfolder or search by capability, tag, and endpoint signature.
+   - Click **Scan Subfolders** to trigger real-time filesystem rescanning.
+   - Click **Add Subfolder** to dynamically declare and scan new packages.
+   - Click **Export Manifest** to inspect or copy the full JSON manifest.
+
+---
+
+## 8. Notes
 
 - The three packages were reconciled so surface-ui **imports** the core rather than
   containing a divergent copy — the core is the single source of truth.

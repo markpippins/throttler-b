@@ -22,6 +22,7 @@ import { WebviewDialog } from './components/dialogs/WebviewDialog';
 import { PropertiesDialog } from './components/dialogs/PropertiesDialog';
 import { ConfirmBatchOperationDialog } from './components/dialogs/ConfirmBatchOperationDialog';
 import { GlobalSearchDialog } from './components/dialogs/GlobalSearchDialog';
+import { GovernedRenameDialog } from './components/dialogs/GovernedRenameDialog';
 
 import { VirtualFileSystem, setVfsService } from './services/fileSystemService';
 import { StorageService } from './services/storageService';
@@ -43,6 +44,8 @@ import { createGovernedDirector } from './governance/adapters/throttlerVfsAdapte
 import { RenameItemInteraction, SHRAPNEL_REVISIONS } from './governance/shrapnel/types';
 import { runGovernancePilotTests } from './governance/tests/runPilotTests';
 import { apiService } from './services/apiService';
+import { SurfaceRecomposedView } from './surface/SurfaceRecomposedView';
+import type { SurfaceRecomposedTab } from './surface/types';
 
 const BOOKMARKS_STORAGE_KEY = 'file-explorer-bookmarks';
 
@@ -176,6 +179,25 @@ export const App: React.FC = () => {
     url: string;
     title: string;
   }>({ isOpen: false, url: '', title: '' });
+
+  const [governedRenameTarget, setGovernedRenameTarget] = useState<{
+    isOpen: boolean;
+    sourcePath: string[];
+    itemName: string;
+    itemType?: 'file' | 'folder';
+  } | null>(null);
+
+  const openGovernedRename = useCallback(
+    (path: string[], name: string, type: 'file' | 'folder' = 'file') => {
+      setGovernedRenameTarget({
+        isOpen: true,
+        sourcePath: path,
+        itemName: name,
+        itemType: type,
+      });
+    },
+    []
+  );
 
   const [propertiesData, setPropertiesData] = useState<{
     isOpen: boolean;
@@ -353,6 +375,20 @@ export const App: React.FC = () => {
     return vfsRef.current.isTrashPath(currentActivePath);
   }, [currentActivePath, rootNode]);
 
+  // --- Surface UI & Projection-Core Ontological Recomposition ---
+  const [isProjectionViewExplicit, setIsProjectionViewExplicit] = useState<boolean>(false);
+  const lastNonOntologyPathRef = useRef<string[]>(['System']);
+
+  const isProjectionActive = useMemo(() => {
+    return isProjectionViewExplicit || (currentActivePath.length > 0 && currentActivePath[0] === 'ontology');
+  }, [isProjectionViewExplicit, currentActivePath]);
+
+  useEffect(() => {
+    if (currentActivePath.length > 0 && currentActivePath[0] !== 'ontology') {
+      lastNonOntologyPathRef.current = currentActivePath;
+    }
+  }, [currentActivePath]);
+
   // --- Navigation Handlers ---
   const handleNavigatePane = (paneNumber: 1 | 2, newPath: string[]) => {
     if (paneNumber === 1) {
@@ -430,12 +466,48 @@ export const App: React.FC = () => {
     addToast('success', `Opened /${targetPath.join('/')} in Pane ${targetPane} (Dual-Pane)`);
   };
 
+  const handleToggleProjection = useCallback(() => {
+    if (isProjectionActive) {
+      setIsProjectionViewExplicit(false);
+      const returnPath =
+        lastNonOntologyPathRef.current.length > 0 && lastNonOntologyPathRef.current[0] !== 'ontology'
+          ? lastNonOntologyPathRef.current
+          : ['System'];
+      handleNavigatePane(activePane, returnPath);
+      addToast('info', 'Switched to standard Explorer view');
+    } else {
+      setIsProjectionViewExplicit(true);
+      handleNavigatePane(activePane, ['ontology', 'surface-ui', 'relics']);
+      addToast('success', 'Recomposed interface using projection-core (Surface UI)');
+    }
+  }, [isProjectionActive, activePane]);
+
   const getSubfoldersForPath = useCallback((path: string[]) => {
+    if (path.length > 0 && path[0] === 'ontology') {
+      if (path.length === 1) {
+        return [{ name: 'surface-ui', type: 'folder' }];
+      }
+      if (path.length === 2 && path[1] === 'surface-ui') {
+        return [
+          { name: 'relics', type: 'folder' },
+          { name: 'viewspec', type: 'folder' },
+          { name: 'governance', type: 'folder' },
+          { name: 'vfs-projection', type: 'folder' },
+        ];
+      }
+      return [];
+    }
     const node = vfsRef.current.getNode(path);
-    if (!node || !node.children) return [];
-    return node.children
-      .filter((c) => c.type === 'folder')
-      .map((c) => ({ name: c.name, type: c.type }));
+    const regularFolders =
+      node && node.children
+        ? node.children
+            .filter((c) => c.type === 'folder')
+            .map((c) => ({ name: c.name, type: c.type }))
+        : [];
+    if (path.length === 0) {
+      return [...regularFolders, { name: 'ontology', type: 'folder' }];
+    }
+    return regularFolders;
   }, []);
 
   const handleDropOnBreadcrumb = (destPath: string[], itemNames: string[], e?: React.DragEvent) => {
@@ -1629,10 +1701,12 @@ export const App: React.FC = () => {
         onNotify={addToast}
         isStarred={starredPaths.some((p) => p.join('/') === currentActivePath.join('/'))}
         onToggleStar={(p) => handleToggleStarPath(p || currentActivePath)}
+        isProjectionActive={isProjectionActive}
+        onToggleProjection={handleToggleProjection}
       />
 
       {/* 2. Top Toolbar */}
-      {(() => {
+      {!isProjectionActive && (() => {
         const activeItems = activePane === 1 ? displayedPane1Items : displayedPane2Items;
         const hasFilter = filterQuery.trim().length > 0 || !!activeTagFilter;
         const matchCount = searchScope === 'vfs' && vfsSearchResults
@@ -1700,10 +1774,8 @@ export const App: React.FC = () => {
             onRename={() => {
               const selectedName = Array.from(currentActiveSelected)[0];
               if (selectedName) {
-                const nextName = prompt('Rename item to:', selectedName);
-                if (nextName && nextName.trim() && nextName.trim() !== selectedName) {
-                  handleRename(currentActivePath, selectedName, nextName.trim());
-                }
+                const node = vfsRef.current.getNode([...currentActivePath, selectedName]);
+                openGovernedRename(currentActivePath, selectedName, node?.type || 'file');
               }
             }}
             onShare={() => {
@@ -1750,9 +1822,23 @@ export const App: React.FC = () => {
         );
       })()}
 
-      {/* 3. Center Workspace Area (Sidebar + File Explorer Panes + Detail Pane) */}
+      {/* 3. Center Workspace Area (Sidebar + File Explorer Panes + Detail Pane) OR Recomposed Surface UI */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Sidebar */}
+        {isProjectionActive ? (
+          <SurfaceRecomposedView
+            activeTab={
+              (currentActivePath[2] as SurfaceRecomposedTab) || 'relics'
+            }
+            onTabChange={(tab) => handleNavigatePane(activePane, ['ontology', 'surface-ui', tab])}
+            onClose={handleToggleProjection}
+            activePath={currentActivePath}
+            onNavigate={(p) => handleNavigatePane(activePane, p)}
+            governanceDirector={governanceRef.current?.director}
+            vfsNodeCount={rootNode?.children?.length || 42}
+          />
+        ) : (
+          <>
+            {/* Left Sidebar */}
         {showSidebar && (
           <Sidebar
             width={sidebarWidth}
@@ -1821,6 +1907,10 @@ export const App: React.FC = () => {
             onCreateFolder={(n) => handleCreateFolder(pane1Path, n)}
             onCreateFile={(n) => handleCreateFile(pane1Path, n)}
             onRename={(oldN, newN) => handleRename(pane1Path, oldN, newN)}
+            onOpenGovernedRename={(itemName) => {
+              const node = vfsRef.current.getNode([...pane1Path, itemName]);
+              openGovernedRename(pane1Path, itemName, node?.type || 'file');
+            }}
             onDelete={(names) => handleDelete(pane1Path, names)}
             onCut={handleCut}
             onCopy={handleCopy}
@@ -1880,6 +1970,10 @@ export const App: React.FC = () => {
                 onCreateFolder={(n) => handleCreateFolder(pane2Path, n)}
                 onCreateFile={(n) => handleCreateFile(pane2Path, n)}
                 onRename={(oldN, newN) => handleRename(pane2Path, oldN, newN)}
+                onOpenGovernedRename={(itemName) => {
+                  const node = vfsRef.current.getNode([...pane2Path, itemName]);
+                  openGovernedRename(pane2Path, itemName, node?.type || 'file');
+                }}
                 onDelete={(names) => handleDelete(pane2Path, names)}
                 onCut={handleCut}
                 onCopy={handleCopy}
@@ -1946,6 +2040,9 @@ export const App: React.FC = () => {
               onShowProperties={(item) =>
                 setPropertiesData({ isOpen: true, item, path: currentActivePath })
               }
+              onOpenGovernedRename={(item) =>
+                openGovernedRename(currentActivePath, item.name, item.type)
+              }
               onDeleteBookmark={handleDeleteBookmark}
               onOpenLink={(url, title) => setWebviewData({ isOpen: true, url, title })}
               onManageFeeds={() => setDialogRssFeeds(true)}
@@ -1954,6 +2051,8 @@ export const App: React.FC = () => {
             />
           );
         })()}
+          </>
+        )}
       </div>
 
       {/* 4. Bottom Idea Stream (Collapsible) */}
@@ -2100,6 +2199,21 @@ export const App: React.FC = () => {
             addToast('success', 'Preferences saved');
           }}
           onClose={() => setDialogPreferences(false)}
+        />
+      )}
+
+      {governedRenameTarget?.isOpen && (
+        <GovernedRenameDialog
+          isOpen={true}
+          onClose={() => setGovernedRenameTarget(null)}
+          sourcePath={governedRenameTarget.sourcePath}
+          itemName={governedRenameTarget.itemName}
+          itemType={governedRenameTarget.itemType}
+          director={governanceRef.current.director}
+          onSuccess={(oldName, newName) => {
+            triggerVfsUpdate();
+            addToast('success', `Renamed "${oldName}" to "${newName}" under Aegis governance`);
+          }}
         />
       )}
 

@@ -1,6 +1,6 @@
 {
   "name": "Throttler B",
-  "description": "A web-based file explorer clone that allows you to navigate a virtual file system, inspired by the Windows Explorer interface.",
+  "description": "A web-based file explorer and ontological projection surface with modular angular subfolder widget registry and dynamic projection-core injection.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

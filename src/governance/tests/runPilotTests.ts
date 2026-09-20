@@ -148,6 +148,42 @@ export async function runGovernancePilotTests(): Promise<{
   }
   log(`  ✔ Test 5 Passed: VFS readSet digest conforms to @nexus/projection-core: ${readSet.digest}`);
 
-  log(`=== All 5 Pilot Tests Passed! Evidence records: ${ledger.getRecentEvidence().length}, Checkpoints: ${ledger.getRecentCheckpoints().length} ===`);
+  // Test 6: Live SolScript Guard Preview & Staging Matrix
+  log('[Test 6] Live SolScript Guard Preview & Staging Matrix Evaluation');
+  // 6a: Valid candidate
+  const previewValid = await director.previewRename(['TestDocs'], 'alpha_v2.txt', 'alpha_v3.txt');
+  if (!previewValid.allowed || previewValid.guards.length !== 4 || !previewValid.guards.every((g) => g.passed)) {
+    log(`❌ Test 6a failed: Expected all 4 guards to pass for 'alpha_v3.txt', got allowed=${previewValid.allowed}`);
+    return { allPassed: false, logs };
+  }
+  log('  ✔ Test 6a Passed: Valid candidate preview passed all 4 Aegis check guards');
+
+  // 6b: Sibling collision
+  const previewCollision = await director.previewRename(['TestDocs'], 'alpha_v2.txt', 'beta.txt');
+  if (previewCollision.allowed) {
+    log('❌ Test 6b failed: Expected sibling collision preview to be refused');
+    return { allPassed: false, logs };
+  }
+  const siblingGuard = previewCollision.guards.find((g) => g.name === 'unique_sibling_name');
+  if (!siblingGuard || siblingGuard.passed) {
+    log('❌ Test 6b failed: unique_sibling_name guard did not flag failure');
+    return { allPassed: false, logs };
+  }
+  log(`  ✔ Test 6b Passed: Sibling collision correctly flagged in preview: "${siblingGuard.message}"`);
+
+  // 6c: Illegal characters
+  const previewIllegal = await director.previewRename(['TestDocs'], 'alpha_v2.txt', 'bad/name.txt');
+  if (previewIllegal.allowed) {
+    log('❌ Test 6c failed: Expected illegal syntax preview to be refused');
+    return { allPassed: false, logs };
+  }
+  const syntaxGuard = previewIllegal.guards.find((g) => g.name === 'valid_name_syntax');
+  if (!syntaxGuard || syntaxGuard.passed) {
+    log('❌ Test 6c failed: valid_name_syntax guard did not flag failure');
+    return { allPassed: false, logs };
+  }
+  log(`  ✔ Test 6c Passed: Illegal syntax correctly flagged in preview: "${syntaxGuard.message}"`);
+
+  log(`=== All 6 Pilot Tests Passed! Evidence records: ${ledger.getRecentEvidence().length}, Checkpoints: ${ledger.getRecentCheckpoints().length} ===`);
   return { allPassed: true, logs };
 }

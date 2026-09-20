@@ -51,6 +51,7 @@ import {
   FileCheck,
   BadgeCheck,
   Lock,
+  Shield,
 } from 'lucide-react';
 import { Bookmark, FileSystemNode, RssFeed, RssItem } from '../types';
 import { FileIcon, getFileTypeDescription } from './FileIcon';
@@ -77,6 +78,7 @@ export interface DetailPaneProps {
   onOpenFile?: (item: FileSystemNode) => void;
   onOpenFullEditor?: (content: string, title: string, path: string[]) => void;
   onShowProperties?: (item: FileSystemNode) => void;
+  onOpenGovernedRename?: (item: FileSystemNode) => void;
   onDeleteBookmark: (id: string) => void;
   onOpenLink: (url: string, title: string) => void;
   onManageFeeds: () => void;
@@ -212,6 +214,7 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
   onOpenFile,
   onOpenFullEditor,
   onShowProperties,
+  onOpenGovernedRename,
   onDeleteBookmark,
   onOpenLink,
   onManageFeeds,
@@ -825,6 +828,16 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {onOpenGovernedRename && (
+                      <button
+                        onClick={() => onOpenGovernedRename(selectedItem)}
+                        className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 border border-emerald-500/20 transition-colors"
+                        title="Stage Governed Rename (Aegis / SolScript Live Guards)"
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">Governed Rename</span>
+                      </button>
+                    )}
                     {onShowProperties && (
                       <button
                         onClick={() => onShowProperties(selectedItem)}
@@ -1336,6 +1349,30 @@ export const DetailPane: React.FC<DetailPaneProps> = ({
                 Missing Lineage
               </button>
             </div>
+
+            {/* Live SolScript Governance Staging Banner */}
+            {selectedItem && onOpenGovernedRename && (
+              <div className="mt-1 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-[11px] text-[rgb(var(--color-text-base))]">
+                      SolScript Live Guard Staging
+                    </div>
+                    <div className="text-[10px] text-[rgb(var(--color-text-muted))]">
+                      Stage real-time Aegis constitutional checks for "{selectedItem.name}"
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenGovernedRename(selectedItem)}
+                  className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[10px] flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                >
+                  <span>Stage Action</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Main Content Area */}

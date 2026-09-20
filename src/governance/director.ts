@@ -7,7 +7,7 @@
 import { RenameItemInteraction } from './shrapnel/types';
 import { AEGIS_FILE_MUTATION_REGISTRY, MutationState } from './aegis/registry';
 import { SolStoragePort } from './solscript/port';
-import { SolScriptEvaluator } from './solscript/evaluator';
+import { SolScriptEvaluator, RenameGuardsPreview } from './solscript/evaluator';
 import { VisionExecutionSubstrate } from './vision/executor';
 import { ResolutionGovernanceLedger, GovernedTransitionResult } from './resolution/governance';
 
@@ -116,5 +116,23 @@ export class GovernedDirector {
       evidence,
       keychain_checkpoint: checkpoint,
     };
+  }
+
+  /**
+   * Preview all check guards non-destructively for candidate inputs.
+   */
+  async previewRename(
+    sourcePath: string[],
+    oldName: string,
+    candidateNewName: string
+  ): Promise<RenameGuardsPreview> {
+    return this.evaluator.previewRenameGuards(sourcePath, oldName, candidateNewName);
+  }
+
+  /**
+   * Access the underlying SolScriptEvaluator instance.
+   */
+  getEvaluator(): SolScriptEvaluator {
+    return this.evaluator;
   }
 }

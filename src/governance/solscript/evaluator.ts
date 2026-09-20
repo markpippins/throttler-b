@@ -50,6 +50,30 @@ export interface EvaluationOutcome {
   }>;
 }
 
+export interface GuardPreviewItem {
+  ruleId: string;
+  name: string;
+  condition: string;
+  description: string;
+  severity: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface RenameGuardsPreview {
+  allowed: boolean;
+  guards: GuardPreviewItem[];
+  digest: string;
+  subjectEntity: {
+    new_name: string;
+    old_name: string;
+    target_exists: boolean;
+    sibling_collision: boolean;
+    storage_writable: boolean;
+  };
+  siblings: string[];
+}
+
 const ILLEGAL_CHARS_REGEX = /[\\/:*?"<>|]/;
 
 export class SolScriptEvaluator {
@@ -283,6 +307,106 @@ export class SolScriptEvaluator {
       return errorPrefixMatch[1];
     }
     return message;
+  }
+
+  /**
+   * Evaluates all check guards non-destructively for real-time UI preview and staging.
+   * Returns individual evaluation verdict and messages for every Aegis rule.
+   */
+  async previewRenameGuards(
+    sourcePath: string[],
+    oldName: string,
+    candidateNewName: string
+  ): Promise<RenameGuardsPreview> {
+    const pinnedReadSet = await this.storagePort.getDirectoryReadSet(sourcePath);
+    const targetNode = pinnedReadSet.nodes.find((n) => n.name === oldName);
+    const targetExists = Boolean(targetNode);
+    const trimmed = candidateNewName ? candidateNewName.trim() : '';
+
+    const collision =
+      trimmed !== oldName &&
+      Boolean(
+        pinnedReadSet.nodes.find(
+          (n) =>
+            n.name.toLowerCase() === trimmed.toLowerCase() &&
+            (!targetNode || n.id !== targetNode.id)
+        )
+      );
+
+    const isWritable = await this.storagePort.isStorageWritable(sourcePath);
+
+    const subjectEntity: Entity = {
+      id: targetNode ? targetNode.id : `subject:${oldName}`,
+      conceptId: 'concept:file_mutation_subject',
+      attributes: {
+        new_name: candidateNewName,
+        old_name: oldName,
+        target_exists: targetExists,
+        sibling_collision: collision,
+        storage_writable: isWritable,
+      },
+    };
+
+    this.interpreter.addEntity(subjectEntity);
+
+    const guards: Rule[] = [
+      RENAME_ITEM_GUARDS.VALID_NAME_SYNTAX,
+      RENAME_ITEM_GUARDS.TARGET_EXISTS,
+      RENAME_ITEM_GUARDS.UNIQUE_SIBLING_NAME,
+      RENAME_ITEM_GUARDS.STORAGE_WRITABLE,
+    ];
+
+    const guardPreviews: GuardPreviewItem[] = [];
+    let allPassed = true;
+
+    for (const rule of guards) {
+      const [passed, checkMessage] = this.interpreter.checkRule(rule, subjectEntity);
+      if (!passed) {
+        allPassed = false;
+        guardPreviews.push({
+          ruleId: rule.id,
+          name: rule.name,
+          condition: (rule as any).condition || rule.name,
+          description: (rule as any).description || rule.notes || '',
+          severity: String(rule.severity),
+          passed: false,
+          message: this.extractReason(checkMessage),
+        });
+      } else {
+        guardPreviews.push({
+          ruleId: rule.id,
+          name: rule.name,
+          condition: (rule as any).condition || rule.name,
+          description: (rule as any).description || rule.notes || '',
+          severity: String(rule.severity),
+          passed: true,
+          message:
+            rule.name === 'valid_name_syntax'
+              ? 'Syntax conforms (valid characters & non-empty)'
+              : rule.name === 'target_exists'
+              ? 'Target item found in active snapshot'
+              : rule.name === 'unique_sibling_name'
+              ? 'No name collision detected among siblings'
+              : 'Target storage profile is writable',
+        });
+      }
+    }
+
+    const siblings = pinnedReadSet.nodes.map((n) => n.name).filter((n) => n !== oldName);
+
+    return {
+      allowed: allPassed,
+      guards: guardPreviews,
+      digest: pinnedReadSet.digest,
+      subjectEntity: {
+        new_name: candidateNewName,
+        old_name: oldName,
+        target_exists: targetExists,
+        sibling_collision: collision,
+        storage_writable: isWritable,
+      },
+      siblings,
+    };
   }
 }
 

@@ -19,6 +19,8 @@ import {
   Star,
   Columns,
   ExternalLink,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import { FileIcon } from './FileIcon';
 
@@ -39,6 +41,8 @@ export interface HeaderAddressBarProps {
   onNotify?: (type: 'info' | 'success' | 'warning' | 'error', text: string) => void;
   isStarred?: boolean;
   onToggleStar?: (path?: string[]) => void;
+  isProjectionActive?: boolean;
+  onToggleProjection?: () => void;
 }
 
 export const HeaderAddressBar: React.FC<HeaderAddressBarProps> = ({
@@ -58,6 +62,8 @@ export const HeaderAddressBar: React.FC<HeaderAddressBarProps> = ({
   onNotify,
   isStarred = false,
   onToggleStar,
+  isProjectionActive = false,
+  onToggleProjection,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [addressInput, setAddressInput] = useState(currentPath.join('/'));
@@ -711,6 +717,30 @@ export const HeaderAddressBar: React.FC<HeaderAddressBarProps> = ({
 
         {/* Right utility actions inside the address bar */}
         <div className="flex items-center gap-1 ml-auto pl-1">
+          {/* Surface UI / Projection-Core Recompose button */}
+          <button
+            id="btn-surface-projection"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onToggleProjection) onToggleProjection();
+            }}
+            title={
+              isProjectionActive
+                ? 'Return to standard Throttler explorer view'
+                : 'Absorb surface-ui & recompose interface using projection-core'
+            }
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-all text-xs font-mono font-medium ${
+              isProjectionActive
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-[rgb(var(--color-text-subtle))] hover:text-blue-500 hover:bg-[rgb(var(--color-surface-hover))]'
+            }`}
+          >
+            <Layers className={`w-3.5 h-3.5 ${isProjectionActive ? 'text-white' : 'text-blue-500'}`} />
+            <span className="text-[10px] tracking-tight">
+              {isProjectionActive ? 'Surface View' : 'Surface UI'}
+            </span>
+          </button>
+
           {/* Star / Bookmark directory button */}
           <button
             id="btn-star-path"

@@ -35,6 +35,7 @@ import {
   Plus,
   X,
   RotateCcw,
+  Shield,
 } from 'lucide-react';
 import {
   FileSystemNode,
@@ -75,6 +76,7 @@ interface FileExplorerPaneProps {
   onCreateFolder: (name: string) => void;
   onCreateFile: (name: string) => void;
   onRename: (oldName: string, newName: string) => void;
+  onOpenGovernedRename?: (itemName: string) => void;
   onDelete: (names: string[]) => void;
   onCut: () => void;
   onCopy: () => void;
@@ -133,6 +135,7 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
   onCreateFolder,
   onCreateFile,
   onRename,
+  onOpenGovernedRename,
   onDelete,
   onCut,
   onCopy,
@@ -943,7 +946,11 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
             ? filteredAndSortedItems.find((it) => selectedItems.has(it.name)) || filteredAndSortedItems[currentFocus]
             : filteredAndSortedItems[currentFocus];
         if (itemToRename) {
-          startInlineRename(itemToRename.name);
+          if (onOpenGovernedRename) {
+            onOpenGovernedRename(itemToRename.name);
+          } else {
+            startInlineRename(itemToRename.name);
+          }
         }
         return;
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
@@ -3014,16 +3021,35 @@ export const FileExplorerPane: React.FC<FileExplorerPaneProps> = ({
               </button>
 
               {contextTargetNames.length === 1 && (
-                <button
-                  onClick={() => {
-                    startInlineRename(contextMenu.targetItem!.name);
-                    closeContextMenu();
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer"
-                >
-                  <Edit2 className="w-4 h-4 text-amber-500" />
-                  <span>Rename</span>
-                </button>
+                <>
+                  {onOpenGovernedRename && (
+                    <button
+                      onClick={() => {
+                        onOpenGovernedRename(contextMenu.targetItem!.name);
+                        closeContextMenu();
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer font-medium"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-emerald-500" />
+                        <span>Governed Rename</span>
+                      </div>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        AEGIS
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      startInlineRename(contextMenu.targetItem!.name);
+                      closeContextMenu();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-[rgb(var(--color-surface-hover))] text-[rgb(var(--color-text-base))] cursor-pointer text-[rgb(var(--color-text-muted))]"
+                  >
+                    <Edit2 className="w-4 h-4 text-amber-500" />
+                    <span>Inline Rename</span>
+                  </button>
+                </>
               )}
 
               {/* Labels & Tags Submenu Item */}
