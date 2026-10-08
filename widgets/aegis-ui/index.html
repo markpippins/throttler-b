@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aegis State Machine IDE</title>
+    <meta name="description" content="IDE toolkit for state machine creation, visual design, TLC/TLA+ formal verification, and interactive simulation backed by Aegis REST API." />
+    <meta property="og:title" content="Aegis State Machine IDE" />
+    <meta property="og:description" content="IDE toolkit for state machine creation, visual design, TLC/TLA+ formal verification, and interactive simulation backed by Aegis REST API." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('aegis_ide_theme');
+          var theme = (saved === 'light' || saved === 'dark' || saved === 'steel') ? saved : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch(e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-[#0F1115] text-[#C9D1D9] antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

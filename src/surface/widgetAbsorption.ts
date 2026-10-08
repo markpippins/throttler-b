@@ -331,8 +331,8 @@ class WidgetAbsorptionRegistry {
       {
         id: 'onto-registry',
         path: ['ontology', 'surface-ui', 'registry'],
-        title: 'Angular Subfolder Widget Registry',
-        description: 'Automated scanner and manifest catalog for angular/ subfolder component exports with dynamic projection-core injection.',
+        title: 'Widgets Subfolder Registry',
+        description: 'Automated scanner and manifest catalog for widgets/ subfolder component exports with dynamic projection-core injection.',
         iconName: 'Cpu',
         category: 'inventory',
         associatedWidgetIds: [],

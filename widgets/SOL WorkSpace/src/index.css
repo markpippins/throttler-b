@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #0a0a0b;
+    --bg-secondary: #121214;
+    --bg-tertiary: #18181b;
+    --bg-elevated: #222226;
+    --border-subtle: #232328;
+    --border-strong: #32323a;
+    --text-primary: #f4f4f7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --accent: #0a84ff;
+    --accent-glow: rgba(10, 132, 255, 0.15);
+  }
+
+  .theme-dark {
+    --bg-primary: #0a0a0b;
+    --bg-secondary: #121214;
+    --bg-tertiary: #18181b;
+    --bg-elevated: #222226;
+    --border-subtle: #232328;
+    --border-strong: #32323a;
+    --text-primary: #f4f4f7;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --accent: #0a84ff;
+    --accent-glow: rgba(10, 132, 255, 0.15);
+  }
+
+  .theme-steel {
+    --bg-primary: #0a0f16;
+    --bg-secondary: #101722;
+    --bg-tertiary: #17212e;
+    --bg-elevated: #1f2c3d;
+    --border-subtle: #1e2c3c;
+    --border-strong: #2c3f55;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #38bdf8;
+    --accent-glow: rgba(56, 189, 248, 0.15);
+  }
+
+  .theme-light {
+    --bg-primary: #f9fafb;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f3f4f6;
+    --bg-elevated: #e5e7eb;
+    --border-subtle: #e5e7eb;
+    --border-strong: #d1d5db;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    --accent: #0284c7;
+    --accent-glow: rgba(2, 132, 199, 0.15);
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    user-select: none;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Custom Professional Sleek Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(113, 113, 122, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(113, 113, 122, 0.45);
+}
+
+/* Blueprint / Precision Grid patterns for graph canvas */
+.graph-grid-pattern {
+  background-size: 20px 20px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+}
+
+.graph-steel-pattern {
+  background-size: 20px 20px;
+  background-image: 
+    linear-gradient(to right, rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+}
+
+.graph-light-pattern {
+  background-size: 20px 20px;
+  background-image: 
+    linear-gradient(to right, rgba(15, 23, 42, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.06) 1px, transparent 1px);
+}
+
+/* Monospace code styling */
+.font-code {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+

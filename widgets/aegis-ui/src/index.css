@@ -1,0 +1,304 @@
+@import "tailwindcss";
+
+:root, [data-theme="dark"] {
+  --bg-primary: #0F1115;
+  --bg-secondary: #16191E;
+  --bg-tertiary: #0A0C10;
+  --bg-hover: #1C2128;
+  --accent: #3B82F6;
+  --accent-hover: #2563EB;
+  --border: #2D333B;
+  --border-subtle: #21262D;
+  --text-main: #C9D1D9;
+  --text-muted: #8B949E;
+  --text-bright: #F0F6FC;
+  --success: #238636;
+  --warning: #D29922;
+  --danger: #F85149;
+  --canvas-grid: #2D333B;
+}
+
+[data-theme="light"] {
+  --bg-primary: #F6F8FA;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EEF2F6;
+  --bg-hover: #E2E8F0;
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --border: #D0D7DE;
+  --border-subtle: #E1E4E8;
+  --text-main: #24292F;
+  --text-muted: #57606A;
+  --text-bright: #0F172A;
+  --success: #1A7F37;
+  --warning: #9A6700;
+  --danger: #CF222E;
+  --canvas-grid: #D0D7DE;
+}
+
+[data-theme="steel"] {
+  --bg-primary: #12171F;
+  --bg-secondary: #1B232E;
+  --bg-tertiary: #0E131A;
+  --bg-hover: #242E3C;
+  --accent: #38BDF8;
+  --accent-hover: #0EA5E9;
+  --border: #323F51;
+  --border-subtle: #263242;
+  --text-main: #CBD5E1;
+  --text-muted: #7E90A6;
+  --text-bright: #F1F5F9;
+  --success: #34D399;
+  --warning: #FBBF24;
+  --danger: #FB7185;
+  --canvas-grid: #323F51;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ==========================================================================
+   LIGHT THEME OVERRIDES
+   ========================================================================== */
+[data-theme="light"] body {
+  background-color: #F6F8FA !important;
+  color: #24292F !important;
+}
+
+/* Backgrounds */
+[data-theme="light"] .bg-\[\#0F1115\] {
+  background-color: #F6F8FA !important;
+}
+[data-theme="light"] .bg-\[\#16191E\] {
+  background-color: #FFFFFF !important;
+}
+[data-theme="light"] .bg-\[\#0A0C10\] {
+  background-color: #EEF2F6 !important;
+}
+[data-theme="light"] .bg-\[\#1C2128\] {
+  background-color: #E2E8F0 !important;
+}
+[data-theme="light"] .bg-\[\#21262D\],
+[data-theme="light"] .bg-\[\#21262d\] {
+  background-color: #EBEEF2 !important;
+}
+[data-theme="light"] .bg-\[\#16191E\]\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+[data-theme="light"] .bg-\[\#16191E\]\/90 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+[data-theme="light"] .bg-\[\#16191E\]\/80 {
+  background-color: rgba(255, 255, 255, 0.82) !important;
+}
+[data-theme="light"] .bg-\[\#16191E\]\/50 {
+  background-color: rgba(235, 238, 242, 0.5) !important;
+}
+[data-theme="light"] .hover\:bg-\[\#21262D\]:hover {
+  background-color: #E2E8F0 !important;
+}
+[data-theme="light"] .hover\:bg-\[\#1C2128\]:hover {
+  background-color: #E8ECF0 !important;
+}
+[data-theme="light"] .hover\:bg-\[\#16191E\]\/50:hover {
+  background-color: rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Borders */
+[data-theme="light"] .border-\[\#2D333B\] {
+  border-color: #D0D7DE !important;
+}
+[data-theme="light"] .border-\[\#21262D\],
+[data-theme="light"] .border-\[\#21262d\] {
+  border-color: #E1E4E8 !important;
+}
+[data-theme="light"] .border-\[\#30363D\] {
+  border-color: #D8DEE4 !important;
+}
+[data-theme="light"] .divide-\[\#2D333B\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #D0D7DE !important;
+}
+
+/* Text Colors */
+[data-theme="light"] .text-\[\#F0F6FC\] {
+  color: #0F172A !important;
+}
+[data-theme="light"] .text-\[\#C9D1D9\] {
+  color: #24292F !important;
+}
+[data-theme="light"] .text-\[\#E6EDF3\] {
+  color: #1F2328 !important;
+}
+[data-theme="light"] .text-\[\#8B949E\] {
+  color: #57606A !important;
+}
+[data-theme="light"] .hover\:text-\[\#C9D1D9\]:hover {
+  color: #0F172A !important;
+}
+[data-theme="light"] .placeholder-\[\#8B949E\]::placeholder {
+  color: #8C959F !important;
+}
+
+/* Form Controls in Light Mode */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: #FFFFFF !important;
+  color: #1F2328 !important;
+  border-color: #D0D7DE !important;
+}
+[data-theme="light"] option {
+  background-color: #FFFFFF !important;
+  color: #1F2328 !important;
+}
+
+/* Subtle Shadows for Light Mode Elevation */
+[data-theme="light"] .shadow-2xl,
+[data-theme="light"] .shadow-lg,
+[data-theme="light"] .shadow-md {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ==========================================================================
+   STEEL THEME OVERRIDES
+   ========================================================================== */
+[data-theme="steel"] body {
+  background-color: #12171F !important;
+  color: #CBD5E1 !important;
+}
+
+/* Backgrounds */
+[data-theme="steel"] .bg-\[\#0F1115\] {
+  background-color: #12171F !important;
+}
+[data-theme="steel"] .bg-\[\#16191E\] {
+  background-color: #1B232E !important;
+}
+[data-theme="steel"] .bg-\[\#0A0C10\] {
+  background-color: #0E131A !important;
+}
+[data-theme="steel"] .bg-\[\#1C2128\] {
+  background-color: #242E3C !important;
+}
+[data-theme="steel"] .bg-\[\#21262D\],
+[data-theme="steel"] .bg-\[\#21262d\] {
+  background-color: #202937 !important;
+}
+[data-theme="steel"] .bg-\[\#16191E\]\/95 {
+  background-color: rgba(27, 35, 46, 0.95) !important;
+}
+[data-theme="steel"] .bg-\[\#16191E\]\/90 {
+  background-color: rgba(27, 35, 46, 0.9) !important;
+}
+[data-theme="steel"] .bg-\[\#16191E\]\/80 {
+  background-color: rgba(27, 35, 46, 0.82) !important;
+}
+[data-theme="steel"] .bg-\[\#16191E\]\/50 {
+  background-color: rgba(27, 35, 46, 0.5) !important;
+}
+[data-theme="steel"] .hover\:bg-\[\#21262D\]:hover {
+  background-color: #283444 !important;
+}
+[data-theme="steel"] .hover\:bg-\[\#1C2128\]:hover {
+  background-color: #242E3C !important;
+}
+[data-theme="steel"] .hover\:bg-\[\#16191E\]\/50:hover {
+  background-color: rgba(40, 52, 68, 0.5) !important;
+}
+
+/* Borders */
+[data-theme="steel"] .border-\[\#2D333B\] {
+  border-color: #323F51 !important;
+}
+[data-theme="steel"] .border-\[\#21262D\],
+[data-theme="steel"] .border-\[\#21262d\] {
+  border-color: #263242 !important;
+}
+[data-theme="steel"] .border-\[\#30363D\] {
+  border-color: #3B4A5F !important;
+}
+[data-theme="steel"] .divide-\[\#2D333B\] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #323F51 !important;
+}
+
+/* Text Colors */
+[data-theme="steel"] .text-\[\#F0F6FC\] {
+  color: #F1F5F9 !important;
+}
+[data-theme="steel"] .text-\[\#C9D1D9\] {
+  color: #CBD5E1 !important;
+}
+[data-theme="steel"] .text-\[\#E6EDF3\] {
+  color: #E2E8F0 !important;
+}
+[data-theme="steel"] .text-\[\#8B949E\] {
+  color: #7E90A6 !important;
+}
+[data-theme="steel"] .hover\:text-\[\#C9D1D9\]:hover {
+  color: #F1F5F9 !important;
+}
+[data-theme="steel"] .placeholder-\[\#8B949E\]::placeholder {
+  color: #64748B !important;
+}
+
+/* Form Controls in Steel Mode */
+[data-theme="steel"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="steel"] textarea,
+[data-theme="steel"] select {
+  background-color: #12171F !important;
+  color: #E2E8F0 !important;
+  border-color: #323F51 !important;
+}
+[data-theme="steel"] option {
+  background-color: #1B232E !important;
+  color: #CBD5E1 !important;
+}
+
+/* ==========================================================================
+   SCROLLBAR STYLES PER THEME
+   ========================================================================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #F6F8FA;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #D0D7DE;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #2563EB;
+}
+
+[data-theme="steel"] ::-webkit-scrollbar-track {
+  background: #12171F;
+}
+[data-theme="steel"] ::-webkit-scrollbar-thumb {
+  background: #323F51;
+}
+[data-theme="steel"] ::-webkit-scrollbar-thumb:hover {
+  background: #38BDF8;
+}
+

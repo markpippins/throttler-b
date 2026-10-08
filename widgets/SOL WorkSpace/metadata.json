@@ -1,0 +1,6 @@
+{
+  "name": "SOL Workbench",
+  "description": "High-density ontology workbench, graph editor, reasoning debugger, and SOLScript runtime environment for SOL (Specification, Ontology, and Logic).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

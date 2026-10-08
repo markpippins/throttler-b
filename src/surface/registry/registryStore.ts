@@ -10,10 +10,10 @@ import type {
   ProjectionInjectionResult,
 } from './manifest';
 import {
-  scanAngularWidgets,
-  discoverAngularSubfolders,
-  registerAngularSubfolder,
-  AngularSubfolderConfig,
+  scanWidgetSubfolders,
+  discoverWidgetSubfolders,
+  registerWidgetSubfolder,
+  WidgetSubfolderConfig,
 } from './scanner';
 import {
   injectManifestIntoProjectionCore,
@@ -24,7 +24,7 @@ type ManifestSubscriber = (manifest: MasterWidgetManifest) => void;
 
 /**
  * High-level manager coordinating scanning, cataloging, querying,
- * and dynamic projection-core injection of widgets from angular/ subfolders.
+ * and dynamic projection-core injection of widgets from widgets/ subfolders.
  */
 export class WidgetRegistryManager {
   private masterManifest: MasterWidgetManifest;
@@ -37,7 +37,7 @@ export class WidgetRegistryManager {
     this.sharedCatalog = new WidgetCatalog();
     this.sharedRegistry = new WidgetRegistry();
     // Initial scan and cataloging
-    this.masterManifest = scanAngularWidgets({ includeAuxiliaryComponents: true });
+    this.masterManifest = scanWidgetSubfolders({ includeAuxiliaryComponents: true });
     this.syncWithProjectionCore();
   }
 
@@ -70,10 +70,10 @@ export class WidgetRegistryManager {
   }
 
   /**
-   * Re-scan all angular/ subfolders and update the catalog.
+   * Re-scan all widgets/ subfolders and update the catalog.
    */
   public rescan(options?: ScannerOptions): MasterWidgetManifest {
-    this.masterManifest = scanAngularWidgets({
+    this.masterManifest = scanWidgetSubfolders({
       includeAuxiliaryComponents: true,
       ...options,
     });
@@ -83,10 +83,10 @@ export class WidgetRegistryManager {
   }
 
   /**
-   * Declare and scan a new angular/ subfolder dynamically.
+   * Declare and scan a new widgets/ subfolder dynamically.
    */
-  public addAndScanSubfolder(config: AngularSubfolderConfig): MasterWidgetManifest {
-    registerAngularSubfolder(config);
+  public addAndScanSubfolder(config: WidgetSubfolderConfig): MasterWidgetManifest {
+    registerWidgetSubfolder(config);
     return this.rescan();
   }
 
@@ -175,7 +175,7 @@ export class WidgetRegistryManager {
         subfolder: entry.subfolder,
         displayName: `${entry.subfolder.toUpperCase()} Suite`,
         description: `Custom subfolder ${entry.subfolder}`,
-        path: `angular/${entry.subfolder}`,
+        path: `widgets/${entry.subfolder}`,
         scannedAt: new Date().toISOString(),
         widgetCount: 1,
         widgets: [entry],
@@ -304,8 +304,8 @@ export class WidgetRegistryManager {
     );
   }
 
-  public getDiscoveredSubfolders(): AngularSubfolderConfig[] {
-    return discoverAngularSubfolders();
+  public getDiscoveredSubfolders(): WidgetSubfolderConfig[] {
+    return discoverWidgetSubfolders();
   }
 
   // Subscriptions

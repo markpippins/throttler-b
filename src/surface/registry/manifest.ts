@@ -45,7 +45,7 @@ export interface ProjectionMappingConfig {
 export type WidgetFunctionalCategory = 'UI' | 'Data' | 'Utility';
 
 /**
- * Complete manifest entry for an individual component export from an angular/ subfolder.
+ * Complete manifest entry for an individual component export from a widgets/ subfolder.
  */
 export interface WidgetManifestEntry {
   /** Unique catalog identifier, e.g. "surface-ui:Sparkline" */
@@ -56,7 +56,7 @@ export interface WidgetManifestEntry {
   componentName: string;
   /** Export type: 'default' or named export */
   exportName: string;
-  /** Subfolder name under angular/, e.g. "surface-ui", "dashboard-ui" */
+  /** Subfolder name under widgets/, e.g. "surface-ui", "dashboard-ui" */
   subfolder: string;
   /** Semantic version or build tag */
   version?: string;
@@ -93,10 +93,10 @@ export interface WidgetManifestEntry {
 }
 
 /**
- * Catalog manifest representing a scanned angular/ subfolder (e.g. angular/surface-ui).
+ * Catalog manifest representing a scanned widgets/ subfolder (e.g. widgets/surface-ui).
  */
 export interface SubfolderCatalogManifest {
-  /** Name of the subfolder under angular/ */
+  /** Name of the subfolder under widgets/ */
   subfolder: string;
   /** User-friendly display title */
   displayName: string;
@@ -104,7 +104,7 @@ export interface SubfolderCatalogManifest {
   description: string;
   /** Semantic version or build identifier */
   version?: string;
-  /** Subfolder base path (e.g. "angular/surface-ui") */
+  /** Subfolder base path (e.g. "widgets/surface-ui") */
   path: string;
   /** Timestamp when scanned */
   scannedAt: string;
@@ -123,7 +123,7 @@ export interface SubfolderCatalogManifest {
 }
 
 /**
- * Master catalog manifest aggregating all discovered angular/ subfolders.
+ * Master catalog manifest aggregating all discovered widgets/ subfolders.
  */
 export interface MasterWidgetManifest {
   schemaVersion: string;
@@ -145,7 +145,7 @@ export interface MasterWidgetManifest {
 }
 
 /**
- * Options for scanning angular/ subfolders.
+ * Options for scanning widgets/ subfolders.
  */
 export interface ScannerOptions {
   /** Target specific subfolder names; if omitted, scans all discovered */

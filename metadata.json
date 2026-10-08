@@ -1,6 +1,6 @@
 {
   "name": "Throttler B",
-  "description": "A web-based file explorer and ontological projection surface with modular angular subfolder widget registry and dynamic projection-core injection.",
+  "description": "A web-based file explorer and ontological projection surface with modular widgets subfolder registry and dynamic projection-core injection.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

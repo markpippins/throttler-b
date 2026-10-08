@@ -1,0 +1,6 @@
+{
+  "name": "Aegis State Machine IDE",
+  "description": "IDE toolkit for state machine creation, visual design, TLC/TLA+ formal verification, and interactive simulation backed by Aegis REST API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

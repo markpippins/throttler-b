@@ -24,9 +24,9 @@ import {
 } from '../relics/HarvestedRelics';
 
 /**
- * Known subfolders under angular/ along with their configuration and default metadata.
+ * Known subfolders under widgets/ along with their configuration and default metadata.
  */
-export interface AngularSubfolderConfig {
+export interface WidgetSubfolderConfig {
   subfolder: string;
   path: string;
   displayName: string;
@@ -34,12 +34,15 @@ export interface AngularSubfolderConfig {
   version: string;
 }
 
-const REGISTERED_ANGULAR_SUBFOLDERS: Map<string, AngularSubfolderConfig> = new Map([
+/** Backward compatibility alias */
+export type AngularSubfolderConfig = WidgetSubfolderConfig;
+
+const REGISTERED_WIDGET_SUBFOLDERS: Map<string, WidgetSubfolderConfig> = new Map([
   [
     'surface-ui',
     {
       subfolder: 'surface-ui',
-      path: 'angular/surface-ui',
+      path: 'widgets/surface-ui',
       displayName: 'Surface UI Relics & Runtime',
       description: 'Canonical interactive widgets, execution consoles, telemetry monitors, and contract adapters.',
       version: '1.0.0',
@@ -48,18 +51,24 @@ const REGISTERED_ANGULAR_SUBFOLDERS: Map<string, AngularSubfolderConfig> = new M
 ]);
 
 /**
- * Register a new angular/ subfolder to be scanned as more are added.
+ * Register a new widgets/ subfolder to be scanned as more are added.
  */
-export function registerAngularSubfolder(config: AngularSubfolderConfig): void {
-  REGISTERED_ANGULAR_SUBFOLDERS.set(config.subfolder, config);
+export function registerWidgetSubfolder(config: WidgetSubfolderConfig): void {
+  REGISTERED_WIDGET_SUBFOLDERS.set(config.subfolder, config);
 }
 
+/** Backward compatibility alias */
+export const registerAngularSubfolder = registerWidgetSubfolder;
+
 /**
- * Discover all registered and configured angular/ subfolders.
+ * Discover all registered and configured widgets/ subfolders.
  */
-export function discoverAngularSubfolders(): AngularSubfolderConfig[] {
-  return Array.from(REGISTERED_ANGULAR_SUBFOLDERS.values());
+export function discoverWidgetSubfolders(): WidgetSubfolderConfig[] {
+  return Array.from(REGISTERED_WIDGET_SUBFOLDERS.values());
 }
+
+/** Backward compatibility alias */
+export const discoverAngularSubfolders = discoverWidgetSubfolders;
 
 /**
  * Deduce or validate functional category (UI, Data, Utility) for a widget.
@@ -194,7 +203,7 @@ export function parseComponentMetadataFromSource(
 }
 
 /**
- * Catalog of canonical widgets in angular/surface-ui.
+ * Catalog of canonical widgets in widgets/surface-ui.
  */
 function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
   const widgets: WidgetManifestEntry[] = [
@@ -205,7 +214,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'Sparkline',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'data-vis',
       category: 'Data',
       description: 'Compact time-series monitor charting live telemetry and velocity trends.',
@@ -246,7 +255,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'Gauge',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'control-surface',
       category: 'Data',
       description: 'Radial meter indicating capacity, quota consumption, and system load metrics.',
@@ -287,7 +296,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'InventoryTable',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'react-component',
       category: 'UI',
       description: 'High-density entity table displaying inventory, stock balances, and allocation levels.',
@@ -319,7 +328,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'ExecutionStateConsole',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'control-surface',
       category: 'Utility',
       description: 'Telemetry switchboard displaying execution requests, leases, and attempt states.',
@@ -356,7 +365,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'CpfReadinessDial',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'control-surface',
       category: 'Utility',
       description: 'Audit readiness dial evaluating contract enforcement and policy compliance scores.',
@@ -390,7 +399,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'EntityCountsMatrix',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'data-vis',
       category: 'Data',
       description: 'Comprehensive grid detailing entity tallies across the 13 canonical ontology schemas.',
@@ -423,7 +432,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'ConduitPlanKanban',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'interactive-tool',
       category: 'UI',
       description: 'Interactive kanban board tracking execution plans across stages.',
@@ -456,7 +465,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'AgentRecordTelemetry',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'data-vis',
       category: 'Data',
       description: 'Continuous audit log streaming multi-agent records, tool calls, and state transitions.',
@@ -489,7 +498,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'CrossReferenceLattice',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'interactive-tool',
       category: 'UI',
       description: 'Node-edge graph visualizer showing relationships between ontology concepts and VFS nodes.',
@@ -523,7 +532,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
       componentName: 'OpenQuestionDeliberation',
       exportName: 'default',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/lib/seed.ts',
+      sourcePath: 'widgets/surface-ui/src/lib/seed.ts',
       archetype: 'interactive-tool',
       category: 'UI',
       description: 'Collaborative consensus tool resolving unresolved questions, proposals, and governance votes.',
@@ -554,7 +563,7 @@ function scanSurfaceUiWidgets(): WidgetManifestEntry[] {
 }
 
 /**
- * Auxiliary components from angular/surface-ui/src/components/ studio and runtime
+ * Auxiliary components from widgets/surface-ui/src/components/ studio and runtime
  */
 function scanSurfaceUiAuxiliaryComponents(): WidgetManifestEntry[] {
   return [
@@ -564,7 +573,7 @@ function scanSurfaceUiAuxiliaryComponents(): WidgetManifestEntry[] {
       componentName: 'WorkbenchSidebar',
       exportName: 'WorkbenchSidebar',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/components/WorkbenchSidebar.tsx',
+      sourcePath: 'widgets/surface-ui/src/components/WorkbenchSidebar.tsx',
       archetype: 'control-surface',
       category: 'UI',
       description: 'Collapsible navigation sidebar indexing surface areas, tabs, and ontological roots.',
@@ -590,7 +599,7 @@ function scanSurfaceUiAuxiliaryComponents(): WidgetManifestEntry[] {
       componentName: 'GovernanceWorkbench',
       exportName: 'GovernanceWorkbench',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/components/runtime/GovernanceWorkbench.tsx',
+      sourcePath: 'widgets/surface-ui/src/components/runtime/GovernanceWorkbench.tsx',
       archetype: 'interactive-tool',
       category: 'Utility',
       description: 'Authority inspection console verifying AST integrity, SolScript policies, and receipt chains.',
@@ -618,7 +627,7 @@ function scanSurfaceUiAuxiliaryComponents(): WidgetManifestEntry[] {
       componentName: 'OperatorPanel',
       exportName: 'OperatorPanel',
       subfolder: 'surface-ui',
-      sourcePath: 'angular/surface-ui/src/components/runtime/OperatorPanel.tsx',
+      sourcePath: 'widgets/surface-ui/src/components/runtime/OperatorPanel.tsx',
       archetype: 'interactive-tool',
       category: 'Utility',
       description: 'Contextual AI operator persona observing current surface viewport and executing actions.',
@@ -641,17 +650,17 @@ function scanSurfaceUiAuxiliaryComponents(): WidgetManifestEntry[] {
 }
 
 /**
- * Scan a specific subfolder under angular/ and produce a SubfolderCatalogManifest.
+ * Scan a specific subfolder under widgets/ and produce a SubfolderCatalogManifest.
  */
 export function scanSubfolder(
   subfolderName: string,
   options: ScannerOptions = {}
 ): SubfolderCatalogManifest {
-  const config = REGISTERED_ANGULAR_SUBFOLDERS.get(subfolderName) || {
+  const config = REGISTERED_WIDGET_SUBFOLDERS.get(subfolderName) || {
     subfolder: subfolderName,
-    path: `angular/${subfolderName}`,
+    path: `widgets/${subfolderName}`,
     displayName: `${subfolderName.toUpperCase()} Component Suite`,
-    description: `Discovered widgets and components in angular/${subfolderName}`,
+    description: `Discovered widgets and components in widgets/${subfolderName}`,
     version: '1.0.0',
   };
 
@@ -660,15 +669,15 @@ export function scanSubfolder(
 
   if (subfolderName === 'surface-ui') {
     widgets = scanSurfaceUiWidgets();
-    sourceFilesScanned.push('angular/surface-ui/src/lib/seed.ts');
-    sourceFilesScanned.push('angular/surface-ui/src/lib/widget-types.ts');
-    sourceFilesScanned.push('angular/surface-ui/src/lib/capabilities-registry.ts');
+    sourceFilesScanned.push('widgets/surface-ui/src/lib/seed.ts');
+    sourceFilesScanned.push('widgets/surface-ui/src/lib/widget-types.ts');
+    sourceFilesScanned.push('widgets/surface-ui/src/lib/capabilities-registry.ts');
 
     if (options.includeAuxiliaryComponents) {
       widgets.push(...scanSurfaceUiAuxiliaryComponents());
-      sourceFilesScanned.push('angular/surface-ui/src/components/WorkbenchSidebar.tsx');
-      sourceFilesScanned.push('angular/surface-ui/src/components/runtime/GovernanceWorkbench.tsx');
-      sourceFilesScanned.push('angular/surface-ui/src/components/runtime/OperatorPanel.tsx');
+      sourceFilesScanned.push('widgets/surface-ui/src/components/WorkbenchSidebar.tsx');
+      sourceFilesScanned.push('widgets/surface-ui/src/components/runtime/GovernanceWorkbench.tsx');
+      sourceFilesScanned.push('widgets/surface-ui/src/components/runtime/OperatorPanel.tsx');
     }
   } else {
     // For newly added subfolders (e.g. analytics-ui, operator-ui)
@@ -713,13 +722,13 @@ export function scanSubfolder(
 }
 
 /**
- * Scan all available angular/ subfolders and compile a unified MasterWidgetManifest.
+ * Scan all available widgets/ subfolders and compile a unified MasterWidgetManifest.
  */
-export function scanAngularWidgets(options: ScannerOptions = {}): MasterWidgetManifest {
+export function scanWidgetSubfolders(options: ScannerOptions = {}): MasterWidgetManifest {
   // Register any caller-provided additional subfolders
   if (options.additionalSubfolders) {
     options.additionalSubfolders.forEach((sub) => {
-      registerAngularSubfolder({
+      registerWidgetSubfolder({
         subfolder: sub.subfolder,
         path: sub.path,
         displayName: sub.displayName || sub.subfolder,
@@ -729,7 +738,7 @@ export function scanAngularWidgets(options: ScannerOptions = {}): MasterWidgetMa
     });
   }
 
-  const allSubfolderConfigs = discoverAngularSubfolders();
+  const allSubfolderConfigs = discoverWidgetSubfolders();
   const subfoldersToScan = options.targetSubfolders
     ? allSubfolderConfigs.filter((c) => options.targetSubfolders?.includes(c.subfolder))
     : allSubfolderConfigs;
@@ -803,3 +812,9 @@ export function scanAngularWidgets(options: ScannerOptions = {}): MasterWidgetMa
     },
   };
 }
+
+/** Convenient alias */
+export const scanWidgets = scanWidgetSubfolders;
+
+/** Backward compatibility alias */
+export const scanAngularWidgets = scanWidgetSubfolders;
