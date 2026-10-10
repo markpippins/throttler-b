@@ -86,8 +86,9 @@ the tab bodies still use divergent envelopes — `max-w-7xl mx-auto` (line 506),
 (line 570), `-m-5` full-bleed (line 643). A surface family should share one region frame; only content
 density should vary.
 
-**B-6 — §9.1 Path-Bridge is obsolete.** It maps every subsystem to `angular/projects/<name>/` (the old
-Angular-CLI convention). No `angular/projects/` directory exists. See the corrected table in §9.1.
+**B-6 — §9.1 Path-Bridge targeted the wrong root.** It mapped every subsystem to
+`angular/projects/<name>/` (the old Angular-CLI convention). **No `angular/projects/` directory exists.**
+The canonical target is now **`widgets/<name>/`**. Corrected in §9.1.
 
 **B-7 — 25 orphaned Angular services.** `src/services/*.service.ts` are Angular (`@Injectable`,
 `signal`, `inject` from `@angular/core`) but the app is React (`index.tsx` → `ReactDOM.createRoot`) and
@@ -127,8 +128,8 @@ While each subsystem provides distinct domain capabilities, their division into 
 
 > **Path & Structure Reconciliation Note**: Per operator mandate, no file renames are executed mid-flight.
 > The six subsystems now live under `angular/throttler-ui/widgets/` alongside the Throttler shell in
-> `angular/throttler-ui/src/` (commit `95801ba`). **The verified path table is in §9.1** — the earlier
-> `angular/projects/*` mapping is obsolete. Treat §0 as authoritative for current state.
+> `angular/throttler-ui/src/` (commit `95801ba`). **The canonical target is `widgets/<name>/`; the verified
+> path table is in §9.1.** Treat §0 as authoritative for current state.
 
 ---
 
@@ -590,21 +591,23 @@ The visual surface builder provides a complete WYSIWYG authoring and preview env
 
 ### 9.1 Path-Bridge Specification (Appendix A — F-3 Resolution) — CORRECTED
 
-> **Superseded.** The original table mapped every subsystem to `angular/projects/<name>/`, which was the
-> old Angular-CLI convention. **No `angular/projects/` directory exists.** The table below is the verified
-> working-tree layout as of `95801ba`.
+> **Target convention is `widgets/<name>/`.** The original table mapped every subsystem to
+> `angular/projects/<name>/`, which was the old Angular-CLI convention; **no `angular/projects/` directory
+> exists.** All subsystems target `widgets/` directly. No top-level `widgets/` exists in the monorepo yet —
+> today the subsystems are nested under `angular/throttler-ui/widgets/` (commit `95801ba`). The left column
+> is the verified working-tree location; the right column is the canonical target.
 
-| Subsystem | Verified working-tree path | Subsystem role |
-| :--- | :--- | :--- |
-| Throttler unified shell | `angular/throttler-ui/src/` | Host app, canvas, dockable drawer, theme surface |
-| ViewSpec VM + compiler core | `angular/throttler-ui/widgets/surface-ui/src/core/` | `designIR.ts`, `compiler.ts`, `widgetSelector.ts`, `runtime.ts` (166-line superset) |
-| SOL WorkSpace | `angular/throttler-ui/widgets/SOL WorkSpace/` | Ontology workbench, AST editors, graph views |
-| Aegis | `angular/throttler-ui/widgets/aegis-ui/` | State machine designer, TLA+/TLC verification |
-| PEB | `angular/throttler-ui/widgets/peb-ui/` | PEB admission governance, causal trace logs |
-| Semantics | `angular/throttler-ui/widgets/semantics-ui/` | Graph database editor and node inspector |
-| Shrapnel | `angular/throttler-ui/widgets/shrapnel-ui/` | Relational EAV console and entity explorer |
-| SOLScript backend | `python/SOLScript/` | Frame evaluation and rule reasoning |
-| Projection (was `projection-core`) | ⚠️ **THREE COPIES — see B-1.** Canonical target is the 166-line superset; the `@nexus/projection-core` alias currently points at the 96-line copy. | Design IR types, ViewSpec compile, runtime gates, `modes.ts` |
+| Subsystem | Verified working-tree path (now) | Canonical target path | Subsystem role |
+| :--- | :--- | :--- | :--- |
+| Throttler unified shell | `angular/throttler-ui/src/` | `widgets/unified-shell/` | Host app, canvas, dockable drawer, theme surface |
+| ViewSpec VM + compiler core | `angular/throttler-ui/widgets/surface-ui/src/core/` | `widgets/surface-ui/` | `designIR.ts`, `compiler.ts`, `widgetSelector.ts`, `runtime.ts` (166-line superset) |
+| SOL WorkSpace | `angular/throttler-ui/widgets/SOL WorkSpace/` | `widgets/sol-workspace/` | Ontology workbench, AST editors, graph views |
+| Aegis | `angular/throttler-ui/widgets/aegis-ui/` | `widgets/aegis-ui/` | State machine designer, TLA+/TLC verification |
+| PEB | `angular/throttler-ui/widgets/peb-ui/` | `widgets/peb-ui/` | PEB admission governance, causal trace logs |
+| Semantics | `angular/throttler-ui/widgets/semantics-ui/` | `widgets/semantics-ui/` | Graph database editor and node inspector |
+| Shrapnel | `angular/throttler-ui/widgets/shrapnel-ui/` | `widgets/shrapnel-ui/` | Relational EAV console and entity explorer |
+| SOLScript backend | `python/SOLScript/` | `python/SOLScript` | Frame evaluation and rule reasoning |
+| Projection (was `projection-core`) | ⚠️ **THREE COPIES — see B-1.** Canonical target is the 166-line superset; the `@nexus/projection-core` alias currently points at the 96-line copy. | `widgets/projection/` | Design IR types, ViewSpec compile, runtime gates, `modes.ts` |
 
 > **Note:** `angular/surface-ui/` also exists at the nexus root, separate from
 > `angular/throttler-ui/widgets/surface-ui/`, with a differing `package.json`. Treat the nested copy as the
