@@ -5,6 +5,101 @@
 * **Author:** Nexus Core Architecture & Agent Systems Team
 * **Target Audience:** Core Engineering, UI/UX, Runtime VM, and Governance Engineering Teams
 * **Date:** September 2026
+* **Canonical revision:** `95801ba` (2026-10-08) — reconciled against working tree 2026-10-10
+
+---
+
+## 0. READ FIRST — Current Verified State & Open Blockers
+
+> This section is maintained by the Layout Mechanic as a **factual reconciliation against the working
+> tree**. It records what is *actually built and verified* versus what this plan *proposes*. Where the
+> two disagree, **the working tree is the truth and this section wins**. Sections 1–10 are the ratified
+> design intent and are left unmodified; treat them as the target, not the current state.
+>
+> Anyone (human or agent) picking up a development thread from this document should start here.
+
+### 0.1 Naming
+
+The projection layer is now **Projection**. The former name (`projection-core`) conflicted with the
+CI/CD pipeline. Package/directory rename is **pending** — see §0.4 item **B-1**.
+
+### 0.2 Verified landed (trust/perceptibility layer — this is genuinely good)
+
+| Item | Location | Status |
+| :--- | :--- | :--- |
+| Epistemic envelope type | `src/surface/types.ts:64` — `EpistemicEnvelope = 'live'\|'degraded'\|'unknown'\|'demo'` | Verified |
+| Caption derivation | `src/surface/core/contextSnapshot.ts` — derives treatment from **envelope × serverStatus × refusalReason**; encodes *"`live` means server-anchored and current; it NEVER means 'healthy.'"* | Verified |
+| Runtime authority gates | `typescript/projection-core` `modes.ts` — `governed-domain` actions **throw** outside `live-governed`; `local-fixture` **throw** outside demo | Verified |
+| Container perceptual channels | `src/surface/core/containerScope.ts` — `getContainerStylingChannels()` returns ≥2 independent channels per `ContainerType` | Verified |
+| Category-B affordance | `src/components/dialogs/GovernedMutationAffordance.tsx` | Verified |
+| Unified shell | `UniversalNavigator` / `UniversalContextInspector` / `DiagramSurface` / `DockableTelemetryDrawer` | Verified |
+
+The container channel map satisfies **Condition 2** as written:
+
+| Container type | Channel 1 (border) | Channel 2 (tint) | Glyph | Authority level |
+| :--- | :--- | :--- | :--- | :--- |
+| `governance-boundary` | emerald **double** | emerald tint | 🛡️ | `authoritative-admission` |
+| `execution-sandbox` | amber **dashed** | amber tint | 🧪 | `isolated-sandbox` |
+| `spatial-group` | slate **hairline** | neutral slate | 📁 | `ephemeral-presentation` |
+
+### 0.3 OPEN BLOCKERS — do not start new threads on these surfaces until resolved
+
+These are **verified defects in the working tree**, not proposals. Each blocks a phase.
+
+**B-1 — Three divergent `designIR.ts` copies; the UI imports the wrong one. (HIGHEST PRIORITY)**
+
+| # | Path | Lines | `crossSurface` / `widgetVariant` |
+| :--- | :--- | :--- | :--- |
+| 1 | `widgets/surface-ui/src/core/types/designIR.ts` (vendored compiler core) | 166 | present |
+| 2 | `typescript/projection-core/src/types/designIR.ts` ← **`@nexus/projection-core` alias target** | **96** | **absent** |
+| 3 | `nexus/typescript/projection-core/src/types/designIR.ts` | 166 | present |
+
+`@nexus/projection-core` (`tsconfig.json:20`, `vite.config.ts:14`) resolves to copy **#2**, which lacks
+`crossSurface`, `switchboard`, `widgetVariant`, `matrix`, `GlobalContextSpec`, `SurfaceContextSpec`, and
+`WorkflowSpec`.
+
+**Consequence:** the approved W5.08 Design IR (`3a8fcf44`) **cannot typecheck against the surface the UI
+actually imports** — it uses `kind: "switchboard"` (A.1), `scope: "crossSurface"` (A.4), and carries its
+variant token on `ConstraintSet.widgetVariant`. The governed IR and the governed host are on two
+incompatible type surfaces.
+
+*Fix (recommended):* repoint the alias at a single canonical 166-line superset and retire the other two.
+Copies #1 and #3 are already conforming — **consolidate to the superset; do not grow the 96-line copy.**
+The `projection-core` → **Projection** rename (B-1 naming) is the natural moment to do this.
+
+**B-2 — GAP-1: requested variant is dropped at compile time.** `selectWidgets()` in the compiler emits
+`props.variant = selected.variant` (the canonical catalog entry variant). A requested `state.<TOKEN>` is
+read at `widgetSelector.ts:216` **only to filter**; `variantMatch` (line 290) is a diagnostic. The per-state
+identity carrier therefore evaporates, so theme state-tokens receive nothing to bind.
+
+**B-3 — GAP-2: `SurfaceContext` has no catalog entry.** `CANONICAL_WIDGET_CATALOG` covers 9 capabilities;
+`SurfaceContext` is absent, so `selectWidgetDeterministically` throws. Compiling the mode-authority region
+fails hard. **This is what makes EAC-3 (authority always visible) unsatisfiable through the toolkit today.**
+
+**B-4 — No theme-token substrate (U-4).** No `ThemeRegistry` and no per-theme `stateTokens` map exist
+anywhere in `src/`. §6.2 and Phase 4 assume one. Without it, the ≥2-channel state-distinctness requirement
+cannot hold across the six themes, and theme-switching will re-normalize degraded states (Condition 1 /
+EAC-4).
+
+**B-5 — Surface family has no shared region envelope (L-3).** In `src/surface/SurfaceRecomposedView.tsx`
+the tab bodies still use divergent envelopes — `max-w-7xl mx-auto` (line 506), `max-w-6xl mx-auto`
+(line 570), `-m-5` full-bleed (line 643). A surface family should share one region frame; only content
+density should vary.
+
+**B-6 — §9.1 Path-Bridge is obsolete.** It maps every subsystem to `angular/projects/<name>/` (the old
+Angular-CLI convention). No `angular/projects/` directory exists. See the corrected table in §9.1.
+
+**B-7 — 25 orphaned Angular services.** `src/services/*.service.ts` are Angular (`@Injectable`,
+`signal`, `inject` from `@angular/core`) but the app is React (`index.tsx` → `ReactDOM.createRoot`) and
+never consumes them. Notably `ui-preferences.service.ts`, cited in §9 as the theme-token home, is one of
+them — it is **dead code** and must not be treated as live theme infrastructure.
+
+### 0.4 Phase status correction
+
+Phases 1–3 are marked *COMPLETED & VERIFIED* in §8. Phase 3's claim of *"full TypeScript compilation and
+runtime verification"* does not hold against B-1/B-2/B-3: the generative compiler it introduces depends on
+a type surface that cannot express the governed IR, and the variant carrier is dropped before rendering.
+Phase 3 should be read as **functionally present, verification claim withdrawn pending B-1..B-3**.
 
 ---
 
@@ -30,7 +125,10 @@ While each subsystem provides distinct domain capabilities, their division into 
 4. **Establish a Production-Grade Design & Theme Substrate**: Migrate wireframe relics to Throttler's established theme library (`theme-light`, `theme-dark`, `theme-midnight`, `theme-nord`, `theme-solarized`, `theme-steel`) using a centralized, extensible `ThemeRegistry`.
 5. **Build a Visual Builder for ViewSpec / DesignIR**: Create a visual WYSIWYG surface builder allowing engineers and operators to compose, wire, save, and mount full-view runtime surfaces directly.
 
-> **Path & Structure Reconciliation Note**: In the current exploratory workspace, subsystems reside under `widgets/` alongside Throttler in `src/`. The production system maps these directly into the target `angular/` application structure and `python/SOLScript` backend service. Per operator mandate, no file renames are executed mid-flight; architectural references bridge these paths seamlessly.
+> **Path & Structure Reconciliation Note**: Per operator mandate, no file renames are executed mid-flight.
+> The six subsystems now live under `angular/throttler-ui/widgets/` alongside the Throttler shell in
+> `angular/throttler-ui/src/` (commit `95801ba`). **The verified path table is in §9.1** — the earlier
+> `angular/projects/*` mapping is obsolete. Treat §0 as authoritative for current state.
 
 ---
 
@@ -449,8 +547,8 @@ The visual surface builder provides a complete WYSIWYG authoring and preview env
   5. Built **Unified Diagram Surface Canvas Engine** (`src/components/canvas/DiagramSurface.tsx`) with pan/zoom, LOD threshold culling, hollow unadmitted nodes, and dashed lineage gap edges (EAC-6).
   6. Equipped **Dockable Telemetry Drawer** (`src/components/bottom-pane/DockableTelemetryDrawer.tsx`) supporting SOL REPL console, Multi-Agent Reasoning Trace, Governance Ledger, and Stage-5 Read-Parity observation.
 
-### Phase 3: Widget-as-Vocabulary Conversational Engine (Weeks 5–6) — [STATUS: COMPLETED & VERIFIED]
-* **Status**: Complete. Tested with full TypeScript compilation and runtime verification.
+### Phase 3: Widget-as-Vocabulary Conversational Engine (Weeks 5–6) — [STATUS: PRESENT; VERIFICATION CLAIM WITHDRAWN]
+* **Status**: Functionally present. The prior "COMPLETED & VERIFIED — full TypeScript compilation and runtime verification" claim is **withdrawn** pending §0.3 **B-1**, **B-2**, **B-3**: the generative compiler depends on a type surface (`@nexus/projection-core`, 96-line copy) that cannot express the approved W5.08 Design IR, and the per-state variant carrier is dropped before rendering.
 * **Accomplishments**:
   1. Implemented **Generative ViewSpec Compiler** (`src/surface/compiler/generativeCompiler.ts`) translating natural language intents into interactive ViewSpec AST instances.
   2. Implemented **Generative Response Canvas** (`src/surface/components/GenerativeResponseViewer.tsx`) allowing the system to express itself through the UI widget library (Aegis State Machines & TLA+ Specifications, Metrics Gauges, Kanban Boards, Telemetry Streams).
@@ -488,21 +586,29 @@ The visual surface builder provides a complete WYSIWYG authoring and preview env
 | **Universal Inspector** | `src/components/inspector/UniversalContextInspector.tsx` | Polymorphic selection inspector and property sheet. |
 | **Governed Admission Affordance** | `src/components/dialogs/GovernedMutationAffordance.tsx` | Canonical reference template for Category-B pre-commit UI. |
 | **Visual Surface Builder** | `src/surface/components/SurfaceStudioBuilder.tsx` | Visual drag-and-drop WYSIWYG builder for ViewSpec surfaces. |
-| **Theme System & Tokens** | `index.html` & `src/services/ui-preferences.service.ts` | Throttler RGB design token declarations and ThemeRegistry. |
+| **Theme System & Tokens** | ⚠️ **NOT YET BUILT** — see B-4 | No `ThemeRegistry` and no per-theme `stateTokens` map exist. §6.2 remains a proposal. **Do not cite `src/services/ui-preferences.service.ts`; it is an orphaned Angular service (B-7).** |
 
-### 9.1 Path-Bridge Specification (Appendix A — F-3 Resolution)
-To reconcile the exploratory workspace layout with the target production repository (resolving F-3 and contract compliance before Phase 2), all subsystem paths map as follows:
+### 9.1 Path-Bridge Specification (Appendix A — F-3 Resolution) — CORRECTED
 
-| Exploratory Workspace Path | Target Production Monorepo Path | Subsystem Role |
+> **Superseded.** The original table mapped every subsystem to `angular/projects/<name>/`, which was the
+> old Angular-CLI convention. **No `angular/projects/` directory exists.** The table below is the verified
+> working-tree layout as of `95801ba`.
+
+| Subsystem | Verified working-tree path | Subsystem role |
 | :--- | :--- | :--- |
-| `widgets/surface-ui/` | `angular/projects/surface-ui/` | ViewSpec VM, sandbox runtime, harvested relics |
-| `widgets/SOL WorkSpace/` | `angular/projects/sol-workspace/` | Ontology workbench, AST editors, graph views |
-| `widgets/aegis-ui/` | `angular/projects/aegis-ui/` | State machine designer, formal verification |
-| `widgets/peb-ui/` | `angular/projects/peb-ui/` | PEB admission governance, causal trace logs |
-| `widgets/semantics-ui/` | `angular/projects/semantics-ui/` | Graph database editor and node inspector |
-| `widgets/shrapnel-ui/` | `angular/projects/shrapnel-ui/` | Relational EAV console and entity explorer |
-| `python/SOLScript` (Backend) | `python/services/solscript/` | SOLScript frame evaluation and rule reasoning |
-| `src/` (Throttler Shell) | `angular/projects/unified-shell/` | Host application, theme registry, dockable drawer |
+| Throttler unified shell | `angular/throttler-ui/src/` | Host app, canvas, dockable drawer, theme surface |
+| ViewSpec VM + compiler core | `angular/throttler-ui/widgets/surface-ui/src/core/` | `designIR.ts`, `compiler.ts`, `widgetSelector.ts`, `runtime.ts` (166-line superset) |
+| SOL WorkSpace | `angular/throttler-ui/widgets/SOL WorkSpace/` | Ontology workbench, AST editors, graph views |
+| Aegis | `angular/throttler-ui/widgets/aegis-ui/` | State machine designer, TLA+/TLC verification |
+| PEB | `angular/throttler-ui/widgets/peb-ui/` | PEB admission governance, causal trace logs |
+| Semantics | `angular/throttler-ui/widgets/semantics-ui/` | Graph database editor and node inspector |
+| Shrapnel | `angular/throttler-ui/widgets/shrapnel-ui/` | Relational EAV console and entity explorer |
+| SOLScript backend | `python/SOLScript/` | Frame evaluation and rule reasoning |
+| Projection (was `projection-core`) | ⚠️ **THREE COPIES — see B-1.** Canonical target is the 166-line superset; the `@nexus/projection-core` alias currently points at the 96-line copy. | Design IR types, ViewSpec compile, runtime gates, `modes.ts` |
+
+> **Note:** `angular/surface-ui/` also exists at the nexus root, separate from
+> `angular/throttler-ui/widgets/surface-ui/`, with a differing `package.json`. Treat the nested copy as the
+> live one for this toolspace and confirm before editing either.
 
 ---
 
