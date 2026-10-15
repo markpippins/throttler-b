@@ -77,20 +77,25 @@ export const GROUP_COLORS: GroupColorOption[] = [
 interface GroupEditorModalProps {
   isOpen: boolean;
   group?: Partial<StateGroup> | null;
-  states: StateNode[];
-  existingGroups: StateGroup[];
+  states?: StateNode[];
+  availableStates?: StateNode[];
+  existingGroups?: StateGroup[];
   onClose: () => void;
   onSave: (groupData: Partial<StateGroup>, selectedStateIds: string[]) => Promise<void>;
+  onDelete?: (groupId: string) => Promise<void>;
 }
 
 export const GroupEditorModal: React.FC<GroupEditorModalProps> = ({
   isOpen,
   group,
-  states,
-  existingGroups,
+  states: propStates,
+  availableStates,
+  existingGroups = [],
   onClose,
   onSave,
+  onDelete,
 }) => {
+  const states = propStates || availableStates || [];
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('blue');

@@ -206,7 +206,7 @@ const StateForm: React.FC<{
       fromStateName: stateNameMap.get(t.from_state_id) || t.from_state_id,
       trigger: t.trigger || (t.triggers && t.triggers.length > 0 ? t.triggers.join(', ') : 'NONE'),
       guard: t.guard_expression,
-      action: t.action_statements,
+      action: typeof t.action === 'string' ? t.action : t.action ? JSON.stringify(t.action) : undefined,
     }));
 
     const formattedOutgoing = outgoingTransitions.map((t) => ({
@@ -214,7 +214,7 @@ const StateForm: React.FC<{
       toStateName: stateNameMap.get(t.to_state_id) || t.to_state_id,
       trigger: t.trigger || (t.triggers && t.triggers.length > 0 ? t.triggers.join(', ') : 'NONE'),
       guard: t.guard_expression,
-      action: t.action_statements,
+      action: typeof t.action === 'string' ? t.action : t.action ? JSON.stringify(t.action) : undefined,
     }));
 
     const currentGroupName = groups.find((g) => g.id === groupId)?.name;
@@ -233,7 +233,7 @@ const StateForm: React.FC<{
         modelVariables: (variables || []).map((v) => ({
           name: v.name,
           type: v.type,
-          initial_value: v.initial_value,
+          initial_value: v.initial_value !== undefined ? String(v.initial_value) : undefined,
           description: v.description,
         })),
       });
