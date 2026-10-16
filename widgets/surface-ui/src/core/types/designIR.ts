@@ -29,7 +29,7 @@ export type InteractionScope = "local" | "global" | "crossRole" | "crossSurface"
 export type VisibilityConstraint = "always" | "whenData" | "whenSelected";
 export type LayoutBias = "main" | "sidebar" | "footer" | "header" | "overlay";
 export type SurfaceType =
-  "dashboard" | "workbench" | "inspector" | "timelineView" | "switchboard" | "matrix";
+  "dashboard" | "workbench" | "inspector" | "timelineView" | "timeline" | "switchboard" | "matrix";
 export type TimeSensitivity = "realTime" | "nearRealTime" | "batch" | "historical";
 export type ReliabilityBias = "eventual" | "strong" | "strict";
 

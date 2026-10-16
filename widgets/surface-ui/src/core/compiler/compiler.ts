@@ -191,6 +191,7 @@ export function selectWidgets(
 
   for (const cap of caps) {
     const roleSpec = roles[cap.role];
+    if (!roleSpec) continue;
     const effectiveDensity: DensitySetting =
       roleSpec.constraints?.density || roleSpec.density || defaultDensity;
 
@@ -203,6 +204,15 @@ export function selectWidgets(
     );
 
     const widgetId = `widget-${sanitizeId(cap.role)}`;
+    const requestedVariant =
+      roleSpec.constraints?.widgetVariant || roleSpec.capability.variant;
+    const stateToken =
+      roleSpec.capability.variant?.startsWith("state.")
+        ? roleSpec.capability.variant
+        : roleSpec.constraints?.widgetVariant?.startsWith("state.")
+          ? roleSpec.constraints.widgetVariant
+          : undefined;
+    const effectiveVariant = requestedVariant || selected.variant;
 
     instances.push({
       id: widgetId,
@@ -212,7 +222,12 @@ export function selectWidgets(
         type: selected.id,
         contract: selected.capabilityId,
         props: {
-          variant: selected.variant,
+          variant: effectiveVariant,
+          catalogVariant: selected.variant,
+          ...(roleSpec.constraints?.widgetVariant
+            ? { widgetVariant: roleSpec.constraints.widgetVariant }
+            : {}),
+          ...(stateToken ? { stateToken } : {}),
           density: effectiveDensity,
           priority: roleSpec.priority || "secondary",
         },
@@ -264,9 +279,8 @@ export function synthesizeLayout(
 
   for (const widget of sortedWidgets) {
     const roleSpec = widget.role ? roles[widget.role] : undefined;
-    const priorityIndex =
-      widget.role && priorityMap[widget.role] !== undefined ? priorityMap[widget.role] : 1;
-    const priority: PriorityLevel = priorityLevels[priorityIndex] ?? "secondary";
+    const priorityIndex = widget.role ? priorityMap[widget.role] : undefined;
+    const priority: PriorityLevel = priorityLevels[priorityIndex ?? 1] ?? "secondary";
 
     const bias =
       roleSpec?.constraints?.layoutBias ?? deriveDefaultLayoutBias(widget.widget.contract);
@@ -290,6 +304,7 @@ export function synthesizeLayout(
 function deriveDefaultLayoutBias(capability: CapabilityId): LayoutNode["region"] {
   switch (capability) {
     case "KeyMetricMatrix":
+    case "SurfaceContext":
       return "header";
     case "InspectorPanel":
       return "sidebar";
@@ -573,3 +588,29 @@ export function compileDesignIR(ir: DesignIR): MultiSurfaceViewSpec {
  * Alias for compileDesignIR
  */
 export const compileMultiSurfaceDesignIR = compileDesignIR;
+
+/**
+ * Class wrapper for backward-compatible callers expecting `new DesignIRCompiler()`.
+ * Delegates deterministically to pure `compileDesignIR` / `compileSurfaceSpec`.
+ */
+export class DesignIRCompiler {
+  compileDesignIR(ir: DesignIR): ViewSpec {
+    const multi = compileDesignIR(ir);
+    const activeId = multi.activeSurfaceId || "main";
+    return (
+      multi.surfaces[activeId] ||
+      Object.values(multi.surfaces)[0] || {
+        id: multi.id,
+        name: multi.name,
+        layout: { nodes: [] },
+        widgets: [],
+        adapters: [],
+        events: [],
+      }
+    );
+  }
+
+  compileMultiSurface(ir: DesignIR): MultiSurfaceViewSpec {
+    return compileDesignIR(ir);
+  }
+}

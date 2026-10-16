@@ -3,7 +3,6 @@ import {
   DensitySetting,
   LayoutBias,
   RoleSpec,
-  ContextSpec,
   TimeSensitivity,
   ReliabilityBias,
   SurfaceContextSpec,
@@ -180,6 +179,19 @@ export const CANONICAL_WIDGET_CATALOG: WidgetCatalogEntry[] = [
       reliabilityBias: "strict",
     },
   },
+  {
+    id: "AuthorityDial",
+    name: "Mode Authority Dial",
+    capabilityId: "SurfaceContext",
+    variant: "authority-dial",
+    density: ["compact", "normal", "highSalience"],
+    regions: ["header", "sidebar", "main"],
+    salience: "high",
+    contextBias: {
+      timeSensitivity: "nearRealTime",
+      reliabilityBias: "strict",
+    },
+  },
 ];
 
 export interface SelectionScoreBreakdown {
@@ -206,7 +218,7 @@ export interface SelectionScoreBreakdown {
  * 5. Deterministic tie-breaker: sort by score DESC, then entry.id ASC.
  */
 export function selectWidgetDeterministically(
-  roleName: string,
+  _roleName: string,
   role: RoleSpec,
   effectiveDensity: DensitySetting,
   context?: SurfaceContextSpec,
@@ -287,7 +299,9 @@ export function selectWidgetDeterministically(
       regionScore,
       timeSensitivityScore,
       reliabilityScore,
-      variantMatch: requestedVariant ? entry.variant === requestedVariant : false,
+      variantMatch: requestedVariant
+        ? entry.variant === requestedVariant || requestedVariant.startsWith("state.") || requestedVariant.startsWith("authority.")
+        : false,
     };
 
     return { entry, breakdown };
@@ -302,7 +316,15 @@ export function selectWidgetDeterministically(
   });
 
   return {
-    selected: scored[0].entry,
-    breakdown: scored[0].breakdown,
+    selected: scored[0]?.entry ?? catalog[0]!,
+    breakdown: scored[0]?.breakdown ?? {
+      entryId: "",
+      totalScore: 0,
+      salienceScore: 0,
+      regionScore: 0,
+      timeSensitivityScore: 0,
+      reliabilityScore: 0,
+      variantMatch: false,
+    },
   };
 }

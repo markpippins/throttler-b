@@ -4,7 +4,7 @@ import {
   ALLOWED_LIVE_ORIGINS,
   LIVE_FETCH_TIMEOUT_MS,
   MAX_LIVE_RESPONSE_BYTES,
-} from "@/lib/sandbox-guard";
+} from "../runtime/sandboxGuard";
 
 export class AdapterRuntime {
   private registry = new Map<string, Adapter>();

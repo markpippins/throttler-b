@@ -46,7 +46,7 @@ export class DefaultActionInterpreter implements ActionInterpreter {
     // Ephemeral Category A actions execute without governance overhead.
     // Governed Category B mutations strictly require admission gating.
     const isCategoryB = ["mutate", "rename", "delete", "transition", "promote_container"].includes(
-      action.type.toLowerCase().trim()
+      action.type.toLowerCase().trim(),
     );
 
     if (isCategoryB) {

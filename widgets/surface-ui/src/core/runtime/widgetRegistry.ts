@@ -88,5 +88,12 @@ export class WidgetRegistry {
       },
       events: ["click", "compare"],
     });
+
+    this.register("AuthorityDial", {
+      render: (props, container) => {
+        container.innerHTML = `<div class="widget authority-dial">Authority Dial: ${JSON.stringify(props.data)}</div>`;
+      },
+      events: ["click", "inspect"],
+    });
   }
 }

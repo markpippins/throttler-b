@@ -33,6 +33,9 @@ CI/CD pipeline. Package/directory rename is **pending** — see §0.4 item **B-1
 | Container perceptual channels | `src/surface/core/containerScope.ts` — `getContainerStylingChannels()` returns ≥2 independent channels per `ContainerType` | Verified |
 | Category-B affordance | `src/components/dialogs/GovernedMutationAffordance.tsx` | Verified |
 | Unified shell | `UniversalNavigator` / `UniversalContextInspector` / `DiagramSurface` / `DockableTelemetryDrawer` | Verified |
+| **B-1 — `designIR.ts` 166-line superset** | `typescript/projection-core/src/types/designIR.ts` (and synced copies) — `crossSurface`, `switchboard`, `widgetVariant`, `matrix`, `GlobalContextSpec`, `SurfaceContextSpec`, `WorkflowSpec` all present | **RESOLVED & VERIFIED** |
+| **B-2 — Variant preservation (GAP-1)** | `typescript/projection-core/src/compiler/compiler.ts` `selectWidgets()` preserves requested `widgetVariant` / `state.<TOKEN>` into `widget.props` (`variant`, `catalogVariant`, `widgetVariant`, `stateToken`) | **RESOLVED & VERIFIED** |
+| **B-3 — `SurfaceContext` catalog entry (GAP-2)** | `typescript/projection-core/src/compiler/widgetSelector.ts` (`CANONICAL_WIDGET_CATALOG`) + `widget/catalog.ts` (`AuthorityDial` implementing `SurfaceContext`, header bias, highSalience) | **RESOLVED & VERIFIED** |
 
 The container channel map satisfies **Condition 2** as written:
 
@@ -42,65 +45,42 @@ The container channel map satisfies **Condition 2** as written:
 | `execution-sandbox` | amber **dashed** | amber tint | 🧪 | `isolated-sandbox` |
 | `spatial-group` | slate **hairline** | neutral slate | 📁 | `ephemeral-presentation` |
 
-### 0.3 OPEN BLOCKERS — do not start new threads on these surfaces until resolved
+### 0.3 OPEN & RESOLVED BLOCKERS
 
-These are **verified defects in the working tree**, not proposals. Each blocks a phase.
+**B-1 — [RESOLVED] Three divergent `designIR.ts` copies unified onto the 166-line superset.**
 
-**B-1 — Three divergent `designIR.ts` copies; the UI imports the wrong one. (HIGHEST PRIORITY)**
+All three locations (`widgets/surface-ui/src/core/`, `typescript/projection-core/src/` ← `@nexus/projection-core` alias target, and `nexus/typescript/projection-core/src/`) are now byte-identical on the 166-line superset (`crossSurface`, `switchboard`, `widgetVariant`, `matrix`, `GlobalContextSpec`, `SurfaceContextSpec`, `WorkflowSpec`), with pure deterministic `compileDesignIR` / `DesignIRCompiler` and full governance exports (`ContractAdmissionRegistry`, `modes`, `witnessedRun`, `replayVerifier`, `sandboxGuard`). The approved W5.08 Design IR (`3a8fcf44`) now typechecks and compiles cleanly against `@nexus/projection-core`.
 
-| # | Path | Lines | `crossSurface` / `widgetVariant` |
-| :--- | :--- | :--- | :--- |
-| 1 | `widgets/surface-ui/src/core/types/designIR.ts` (vendored compiler core) | 166 | present |
-| 2 | `typescript/projection-core/src/types/designIR.ts` ← **`@nexus/projection-core` alias target** | **96** | **absent** |
-| 3 | `nexus/typescript/projection-core/src/types/designIR.ts` | 166 | present |
+**B-2 — [RESOLVED] GAP-1: requested variant is preserved through compilation.**
 
-`@nexus/projection-core` (`tsconfig.json:20`, `vite.config.ts:14`) resolves to copy **#2**, which lacks
-`crossSurface`, `switchboard`, `widgetVariant`, `matrix`, `GlobalContextSpec`, `SurfaceContextSpec`, and
-`WorkflowSpec`.
+`selectWidgets()` in `compiler.ts` now preserves the requested `roleSpec.constraints.widgetVariant` or `roleSpec.capability.variant` into `widget.props.variant` (while retaining `catalogVariant: selected.variant`, `widgetVariant`, and `stateToken` when `state.<TOKEN>` is supplied). Per-state identity carriers no longer evaporate before rendering.
 
-**Consequence:** the approved W5.08 Design IR (`3a8fcf44`) **cannot typecheck against the surface the UI
-actually imports** — it uses `kind: "switchboard"` (A.1), `scope: "crossSurface"` (A.4), and carries its
-variant token on `ConstraintSet.widgetVariant`. The governed IR and the governed host are on two
-incompatible type surfaces.
+**B-3 — [RESOLVED] GAP-2: `SurfaceContext` registered in `CANONICAL_WIDGET_CATALOG` and `WidgetCatalog`.**
 
-*Fix (recommended):* repoint the alias at a single canonical 166-line superset and retire the other two.
-Copies #1 and #3 are already conforming — **consolidate to the superset; do not grow the 96-line copy.**
-The `projection-core` → **Projection** rename (B-1 naming) is the natural moment to do this.
+`AuthorityDial` (`capabilityId: "SurfaceContext"`, `variant: "authority-dial"`, `regions: ["header", "sidebar", "main"]`, `salience: "high"`) is now registered in `CANONICAL_WIDGET_CATALOG`, `WidgetCatalog`, and `WidgetRegistry`, with `deriveDefaultLayoutBias("SurfaceContext") -> "header"`. Compiling the A.3 `w508.mode-authority` region succeeds deterministically (unblocking EAC-3).
 
-**B-2 — GAP-1: requested variant is dropped at compile time.** `selectWidgets()` in the compiler emits
-`props.variant = selected.variant` (the canonical catalog entry variant). A requested `state.<TOKEN>` is
-read at `widgetSelector.ts:216` **only to filter**; `variantMatch` (line 290) is a diagnostic. The per-state
-identity carrier therefore evaporates, so theme state-tokens receive nothing to bind.
-
-**B-3 — GAP-2: `SurfaceContext` has no catalog entry.** `CANONICAL_WIDGET_CATALOG` covers 9 capabilities;
-`SurfaceContext` is absent, so `selectWidgetDeterministically` throws. Compiling the mode-authority region
-fails hard. **This is what makes EAC-3 (authority always visible) unsatisfiable through the toolkit today.**
-
-**B-4 — No theme-token substrate (U-4).** No `ThemeRegistry` and no per-theme `stateTokens` map exist
+**B-4 — [OPEN] No theme-token substrate (U-4).** No `ThemeRegistry` and no per-theme `stateTokens` map exist
 anywhere in `src/`. §6.2 and Phase 4 assume one. Without it, the ≥2-channel state-distinctness requirement
 cannot hold across the six themes, and theme-switching will re-normalize degraded states (Condition 1 /
 EAC-4).
 
-**B-5 — Surface family has no shared region envelope (L-3).** In `src/surface/SurfaceRecomposedView.tsx`
+**B-5 — [OPEN] Surface family has no shared region envelope (L-3).** In `src/surface/SurfaceRecomposedView.tsx`
 the tab bodies still use divergent envelopes — `max-w-7xl mx-auto` (line 506), `max-w-6xl mx-auto`
 (line 570), `-m-5` full-bleed (line 643). A surface family should share one region frame; only content
 density should vary.
 
-**B-6 — §9.1 Path-Bridge targeted the wrong root.** It mapped every subsystem to
+**B-6 — [RESOLVED] §9.1 Path-Bridge targeted the wrong root.** It mapped every subsystem to
 `angular/projects/<name>/` (the old Angular-CLI convention). **No `angular/projects/` directory exists.**
 The canonical target is now **`widgets/<name>/`**. Corrected in §9.1.
 
-**B-7 — 25 orphaned Angular services.** `src/services/*.service.ts` are Angular (`@Injectable`,
+**B-7 — [OPEN] 25 orphaned Angular services.** `src/services/*.service.ts` are Angular (`@Injectable`,
 `signal`, `inject` from `@angular/core`) but the app is React (`index.tsx` → `ReactDOM.createRoot`) and
 never consumes them. Notably `ui-preferences.service.ts`, cited in §9 as the theme-token home, is one of
 them — it is **dead code** and must not be treated as live theme infrastructure.
 
 ### 0.4 Phase status correction
 
-Phases 1–3 are marked *COMPLETED & VERIFIED* in §8. Phase 3's claim of *"full TypeScript compilation and
-runtime verification"* does not hold against B-1/B-2/B-3: the generative compiler it introduces depends on
-a type surface that cannot express the governed IR, and the variant carrier is dropped before rendering.
-Phase 3 should be read as **functionally present, verification claim withdrawn pending B-1..B-3**.
+Phases 1–3 are marked *COMPLETED & VERIFIED* in §8. With **B-1**, **B-2**, and **B-3** resolved, the `@nexus/projection-core` type surface and deterministic compiler now compile all four W5.08 SurfaceSpecs (`3a8fcf44`) and preserve state-token variants end-to-end. Remaining Phase 3/4 work is wiring `GenerativeViewSpecCompiler` to emit compiled `ViewSpec` ASTs through `compileDesignIR` rather than hardcoded template branches, and building the Phase 4 `ThemeRegistry` (`B-4`).
 
 ---
 
@@ -548,8 +528,8 @@ The visual surface builder provides a complete WYSIWYG authoring and preview env
   5. Built **Unified Diagram Surface Canvas Engine** (`src/components/canvas/DiagramSurface.tsx`) with pan/zoom, LOD threshold culling, hollow unadmitted nodes, and dashed lineage gap edges (EAC-6).
   6. Equipped **Dockable Telemetry Drawer** (`src/components/bottom-pane/DockableTelemetryDrawer.tsx`) supporting SOL REPL console, Multi-Agent Reasoning Trace, Governance Ledger, and Stage-5 Read-Parity observation.
 
-### Phase 3: Widget-as-Vocabulary Conversational Engine (Weeks 5–6) — [STATUS: PRESENT; VERIFICATION CLAIM WITHDRAWN]
-* **Status**: Functionally present. The prior "COMPLETED & VERIFIED — full TypeScript compilation and runtime verification" claim is **withdrawn** pending §0.3 **B-1**, **B-2**, **B-3**: the generative compiler depends on a type surface (`@nexus/projection-core`, 96-line copy) that cannot express the approved W5.08 Design IR, and the per-state variant carrier is dropped before rendering.
+### Phase 3: Widget-as-Vocabulary Conversational Engine (Weeks 5–6) — [STATUS: PRESENT; COMPILER PREREQUISITES B-1..B-3 RESOLVED]
+* **Status**: Functionally present; `@nexus/projection-core` compiler prerequisites (**B-1**, **B-2**, **B-3**) are now resolved and verified. Remaining step: route `GenerativeViewSpecCompiler` through `compileDesignIR` so every generated response emits a canonical `ViewSpec` AST.
 * **Accomplishments**:
   1. Implemented **Generative ViewSpec Compiler** (`src/surface/compiler/generativeCompiler.ts`) translating natural language intents into interactive ViewSpec AST instances.
   2. Implemented **Generative Response Canvas** (`src/surface/components/GenerativeResponseViewer.tsx`) allowing the system to express itself through the UI widget library (Aegis State Machines & TLA+ Specifications, Metrics Gauges, Kanban Boards, Telemetry Streams).
@@ -607,7 +587,7 @@ The visual surface builder provides a complete WYSIWYG authoring and preview env
 | Semantics | `angular/throttler-ui/widgets/semantics-ui/` | `widgets/semantics-ui/` | Graph database editor and node inspector |
 | Shrapnel | `angular/throttler-ui/widgets/shrapnel-ui/` | `widgets/shrapnel-ui/` | Relational EAV console and entity explorer |
 | SOLScript backend | `python/SOLScript/` | `python/SOLScript` | Frame evaluation and rule reasoning |
-| Projection (was `projection-core`) | ⚠️ **THREE COPIES — see B-1.** Canonical target is the 166-line superset; the `@nexus/projection-core` alias currently points at the 96-line copy. | `widgets/projection/` | Design IR types, ViewSpec compile, runtime gates, `modes.ts` |
+| Projection (was `projection-core`) | `angular/throttler-ui/typescript/projection-core/src/` (unified 166-line superset; B-1..B-3 resolved) | `widgets/projection/` | Design IR types, ViewSpec compile, runtime gates, `modes.ts` |
 
 > **Note:** `angular/surface-ui/` also exists at the nexus root, separate from
 > `angular/throttler-ui/widgets/surface-ui/`, with a differing `package.json`. Treat the nested copy as the

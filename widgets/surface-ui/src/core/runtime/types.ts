@@ -1,9 +1,11 @@
-import { ViewSpec, AdapterBinding, PriorityLevel, DensitySetting } from "../types/viewSpec";
+import { ViewSpec, AdapterBinding } from "../types/viewSpec";
+import { PriorityLevel, DensitySetting } from "../types/designIR";
 import { CapabilityContract } from "../types/capabilities";
 import { Adapter } from "../adapter/types";
 import { ContractStateStore } from "./contractState";
 import { InteractionContextStoreAPI } from "./interactionContext";
 import type { ActionHandler } from "./actionInterpreter";
+import type { ViewRuntimeMode } from "./modes";
 
 export interface RuntimeWidget {
   id: string;
@@ -49,6 +51,7 @@ export interface RuntimeLayoutGraph {
 
 export interface RuntimeView {
   spec: ViewSpec;
+  mode?: ViewRuntimeMode;
   widgets: Map<string, RuntimeWidget>;
   adapters: Map<string, RuntimeAdapter>;
   contractStores: Map<string, ContractStateStore>;
@@ -84,6 +87,7 @@ export interface WidgetImplementation {
 }
 
 export interface RuntimeOptions {
+  mode?: ViewRuntimeMode;
   useFixtures?: boolean;
   refreshInterval?: number;
   actionHandlers?: Record<string, ActionHandler>;
