@@ -107,6 +107,15 @@ export class WidgetCatalog {
       defaultDensity: "normal",
       defaultLayout: "main",
     });
+
+    this.widgets.set("AuthorityDial", {
+      id: "AuthorityDial",
+      name: "Mode Authority Dial",
+      implements: ["SurfaceContext"],
+      variants: ["authority-dial", "authority.dial", "header-strip"],
+      defaultDensity: "highSalience",
+      defaultLayout: "header",
+    });
   }
 
   getWidget(id: string): WidgetDefinition | undefined {

@@ -1,5 +1,7 @@
-import { ViewSpec, ViewSpecAction } from "../types/viewSpec";
+import { ViewSpec, ViewSpecAction, validateViewSpec } from "../types/viewSpec";
+import { runtimeModeState } from "./modes";
 import { AdapterRuntime } from "../adapter/runtime";
+import type { TransformStep } from "../adapter/types";
 import { WidgetRegistry } from "./widgetRegistry";
 import { SimpleEventBus } from "./eventBus";
 import { InMemoryContractStateStore, ContractStateStore } from "./contractState";
@@ -20,8 +22,7 @@ export class ViewSpecRuntime {
   private widgetRegistry: WidgetRegistry;
   private adapterRuntime: AdapterRuntime;
   private actionInterpreter: ActionInterpreter;
-  private options: Required<Omit<RuntimeOptions, "actionHandlers" | "navigation">> &
-    Pick<RuntimeOptions, "actionHandlers" | "navigation">;
+  private options: RuntimeOptions;
   private activeViews: Map<string, RuntimeView> = new Map();
 
   constructor(options: RuntimeOptions = {}) {
@@ -29,8 +30,9 @@ export class ViewSpecRuntime {
     this.adapterRuntime = new AdapterRuntime();
     this.actionInterpreter = new DefaultActionInterpreter();
     this.options = {
-      useFixtures: true,
-      refreshInterval: 30000,
+      mode: options.mode ?? (options.useFixtures === false ? "live-read" : "fixture"),
+      useFixtures: options.useFixtures ?? true,
+      refreshInterval: options.refreshInterval ?? 30000,
       actionHandlers: options.actionHandlers,
       navigation: options.navigation,
     };
@@ -43,7 +45,13 @@ export class ViewSpecRuntime {
   }
 
   mount(spec: ViewSpec, container: HTMLElement): RuntimeView {
+    if (!validateViewSpec(spec)) {
+      throw new Error("Invalid or unversioned ViewSpec artifact");
+    }
     const view = this.initializeView(spec, container);
+    if (view.container.dataset) {
+      view.container.dataset.runtimeMode = runtimeModeState(view.mode ?? "fixture").label;
+    }
     this.buildLayout(view);
     this.instantiateWidgets(view);
     this.runAdapters(view);
@@ -67,6 +75,7 @@ export class ViewSpecRuntime {
 
     return {
       spec,
+      mode: this.options.mode,
       widgets: new Map(),
       adapters: new Map(),
       contractStores,
@@ -194,8 +203,9 @@ export class ViewSpecRuntime {
       if (!adapter) {
         this.adapterRuntime.register({
           id: binding.adapterId,
-          steps: [],
+          steps: [] as TransformStep[],
           outputContract: binding.outputContract,
+          source: binding.source ?? { type: "mock", mock: undefined },
         });
         adapter = this.adapterRuntime.getAdapter(binding.adapterId);
       }

@@ -1,6 +1,17 @@
 import { CapabilityId, PriorityLevel, HierarchySetting, DensitySetting } from "./designIR";
 import { CapabilityContract, SurfaceContextContract } from "./capabilities";
 
+/**
+ * ArtifactIdentity — governance provenance applied to compiled artifacts.
+ * Serializable, versioned, content-addressed (sha256). Emitted by the
+ * governed projection path; validated by validateViewSpec / validateProjectionManifest.
+ */
+export interface ArtifactIdentity {
+  artifactId: string;
+  artifactVersion: number;
+  artifactDigest: `sha256:${string}`;
+}
+
 export interface Widget {
   id: string;
   type: string;
@@ -15,10 +26,12 @@ export interface WidgetInstance {
   role?: string;
 }
 
+export type Region = "main" | "sidebar" | "footer" | "header" | "overlay";
+
 export interface LayoutNode {
   id: string;
   widgetId: string;
-  region: "main" | "sidebar" | "footer" | "header" | "overlay";
+  region: Region;
   priority?: PriorityLevel;
   density?: DensitySetting;
 }
@@ -29,13 +42,14 @@ export interface LayoutGraph {
   density?: DensitySetting;
 }
 
-export type PayloadSourceType = "rest" | "sse" | "mock" | "file" | "agent";
+export type PayloadSourceType = "rest" | "sse" | "mock" | "file" | "agent" | "server";
 
 export interface PayloadSource {
   type: PayloadSourceType;
   url?: string;
   mock?: unknown;
   agentId?: string;
+  manifest?: import("../adapter/governed").ProjectionManifest;
 }
 
 export interface AdapterStub {
@@ -45,11 +59,17 @@ export interface AdapterStub {
   }>;
 }
 
+/**
+ * AdapterBinding — a widget's projection from a payload source into a
+ * capability contract. `source` is present on governed/server bindings
+ * (see adapter/governed); stub-based bindings (studio authoring) may omit it.
+ */
 export interface AdapterBinding {
   widgetId: string;
   adapterId?: string;
   outputContract: CapabilityId;
   stub?: AdapterStub;
+  source?: PayloadSource;
 }
 
 /**
@@ -112,12 +132,14 @@ export interface WorkflowRoutingTable {
  * Canonical Invariant: ViewSpec is always treated as a compiled program AST,
  * not just a static node configuration. It specifies spatial layout execution,
  * contract bindings, adapter projections, and event routing state graphs.
+ * Governed projections extend it with ArtifactIdentity provenance.
  */
-export interface ViewSpec {
+export interface ViewSpec extends Partial<ArtifactIdentity> {
   id: string;
   name?: string;
   description?: string;
   surfaceId?: string;
+  schemaVersion?: 1;
   layout: LayoutGraph;
   widgets: WidgetInstance[];
   adapters: AdapterBinding[];
@@ -137,4 +159,23 @@ export interface MultiSurfaceViewSpec {
   globalContext?: Record<string, unknown>;
   workflows?: WorkflowRoutingTable;
   activeSurfaceId?: string;
+}
+
+/**
+ * Structural + provenance validation for a compiled ViewSpec.
+ * Guards the canonical Invariant that a ViewSpec is a well-formed program AST
+ * with optional ArtifactIdentity provenance attached.
+ */
+export function validateViewSpec(spec: unknown): spec is ViewSpec {
+  if (!spec || typeof spec !== "object") return false;
+  const value = spec as Partial<ViewSpec>;
+  return (value.schemaVersion === undefined || value.schemaVersion === 1)
+    && typeof value.id === "string"
+    && (value.artifactId === undefined || typeof value.artifactId === "string")
+    && (value.artifactVersion === undefined || Number.isInteger(value.artifactVersion))
+    && (value.artifactDigest === undefined || (typeof value.artifactDigest === "string" && /^sha256:[0-9a-f]{64}$/.test(value.artifactDigest)))
+    && Array.isArray(value.layout?.nodes)
+    && Array.isArray(value.widgets)
+    && Array.isArray(value.adapters)
+    && Array.isArray(value.events);
 }
