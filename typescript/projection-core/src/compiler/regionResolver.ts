@@ -1,6 +1,10 @@
 import { RoleSpec, HierarchySetting, LayoutBias, DensitySetting } from "../types/designIR";
+import { Region } from "../types/viewSpec";
 
-export type Region = "main" | "sidebar" | "header" | "footer" | "overlay";
+// Region is declared canonically in the types layer (types/viewSpec.ts).
+// It is re-exported from index.ts alongside this module; declaring it here
+// too produced TS2308 ("Module './types/viewSpec' has already exported a
+// member named 'Region'") because both are reached through `export *`.
 
 export interface RegionResolverContext {
   hierarchy: HierarchySetting;
