@@ -15,6 +15,9 @@ import {
   formatSectionProvenanceCaption,
 } from '../compiler/generativeCompiler';
 import { deriveVisualTreatment } from '../core/contextSnapshot';
+import { SURFACE_FAMILY_REGION_ENVELOPE } from '../SurfaceRecomposedView';
+import { VIEW_SPEC_STUDIO_DEPRECATION_NOTICE } from '../components/ViewSpecStudioView';
+
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -158,6 +161,18 @@ export function runThemeAndGenerativeTests(): { allPassed: boolean; logs: string
   });
   assert(demoCaption.includes('DEMO · fixture · non-authoritative'), 'Demo fixture caption must state DEMO · fixture · non-authoritative');
   logs.push('✔ Verified anti-mock ungrounded data rejection (Condition 1)');
+
+  // 7. Verify B-5 shared surface-family region envelope & B-6 ViewSpecStudioView deprecation notice
+  assert(
+    SURFACE_FAMILY_REGION_ENVELOPE.includes('max-w-7xl mx-auto w-full'),
+    `Expected SURFACE_FAMILY_REGION_ENVELOPE to include 'max-w-7xl mx-auto w-full', got '${SURFACE_FAMILY_REGION_ENVELOPE}'`
+  );
+  assert(
+    VIEW_SPEC_STUDIO_DEPRECATION_NOTICE.code === 'B-6_DEPRECATED_PROTOTYPE_SWITCHBOARD' &&
+      VIEW_SPEC_STUDIO_DEPRECATION_NOTICE.envelope === 'demo',
+    'Expected VIEW_SPEC_STUDIO_DEPRECATION_NOTICE to declare B-6_DEPRECATED_PROTOTYPE_SWITCHBOARD and demo envelope'
+  );
+  logs.push('✔ Verified B-5 shared surface-family region envelope and B-6 ViewSpecStudioView deprecation disclosure');
 
   return { allPassed: true, logs };
 }

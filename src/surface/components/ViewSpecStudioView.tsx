@@ -15,6 +15,8 @@ import {
   Sparkles,
   Sliders,
   CheckCircle,
+  AlertTriangle,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   ExecutionStateConsoleRelic,
@@ -27,6 +29,26 @@ import {
   EntityCountsMatrixRelic,
   InventoryTableRelic,
 } from '../relics/HarvestedRelics';
+
+export interface ViewSpecStudioViewProps {
+  /** Optional callback to navigate to the canonical Phase 3/5 Unified Toolspace / AI Vocabulary Studio */
+  onOpenCanonicalStudio?: () => void;
+}
+
+/**
+ * Explicit deprecation metadata for the Phase 1/2 structural switchboard (B-6).
+ * Preserves auditability while directing operators to the canonical Phase 3/5 surfaces.
+ */
+export const VIEW_SPEC_STUDIO_DEPRECATION_NOTICE = {
+  code: 'B-6_DEPRECATED_PROTOTYPE_SWITCHBOARD',
+  status: 'deprecated-prototype' as const,
+  envelope: 'demo' as const,
+  headline: 'DEPRECATED PROTOTYPE SURFACE · DEMO FIXTURE SWITCHBOARD (B-6)',
+  summary:
+    'ViewSpecStudioView is a Phase 1/2 static preset switchboard retained for AST diffing only. Canonical DesignIR -> ViewSpec compilation with per-section server provenance now runs in the Unified Toolspace (AI Vocabulary Studio / GenerativeResponseViewer).',
+  canonicalReplacement: 'GenerativeResponseViewer & Visual Surface Builder (Unified Toolspace)',
+};
+
 
 // Preset 1: Nebula Execution Switchboard IR
 const EXECUTION_SWITCHBOARD_IR: DesignIR = {
@@ -100,7 +122,9 @@ const VFS_ONTOLOGY_IR: DesignIR = {
   },
 };
 
-export const ViewSpecStudioView: React.FC = () => {
+export const ViewSpecStudioView: React.FC<ViewSpecStudioViewProps> = ({
+  onOpenCanonicalStudio,
+}) => {
   const [selectedPreset, setSelectedPreset] = useState<'execution' | 'vfs'>('execution');
   const [activeTab, setActiveTab] = useState<'layout' | 'viewspec-json' | 'ir-spec'>('layout');
   const [selectedPlanId, setSelectedPlanId] = useState<string>('PLN-101');
@@ -126,7 +150,42 @@ export const ViewSpecStudioView: React.FC = () => {
   }, [selectedPreset]);
 
   return (
-    <div className="space-y-4 max-w-6xl mx-auto font-mono text-xs">
+    <div className="space-y-4 w-full font-mono text-xs">
+      {/* B-6 Explicit Deprecation & Demo-Fixture Disclosure Banner */}
+      <div
+        role="status"
+        data-testid="viewspec-studio-deprecation-banner"
+        className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border-2 border-dashed border-amber-500/60 bg-amber-950/25 text-amber-200"
+      >
+        <div className="flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-amber-300 tracking-wide text-[11px]">
+                ⚠️ {VIEW_SPEC_STUDIO_DEPRECATION_NOTICE.headline}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-violet-950/70 border border-dashed border-violet-400/50 text-violet-200 text-[10px] font-bold">
+                🧪 DEMO · FIXTURE · NON-AUTHORITATIVE
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-200/85 font-sans">
+              {VIEW_SPEC_STUDIO_DEPRECATION_NOTICE.summary}
+            </p>
+          </div>
+        </div>
+
+        {onOpenCanonicalStudio && (
+          <button
+            type="button"
+            onClick={onOpenCanonicalStudio}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-200 text-[11px] font-bold transition-colors shrink-0 cursor-pointer"
+          >
+            <span>Open AI Vocabulary Studio</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
       {/* Header bar with Preset Switcher & Tab selector */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-border/80 bg-surface/90 shadow-xs">
         <div className="flex items-center gap-2.5">

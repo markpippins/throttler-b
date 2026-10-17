@@ -76,7 +76,7 @@ export const GovernanceWorkbenchView: React.FC<GovernanceWorkbenchViewProps> = (
   const StatusIcon = meta.icon;
 
   return (
-    <div className="space-y-4 max-w-5xl mx-auto font-mono text-xs">
+    <div className="space-y-4 w-full font-mono text-xs">
       {/* Mode Banner */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-border/80 bg-surface/90 shadow-xs">
         <div className="flex items-center gap-3">
