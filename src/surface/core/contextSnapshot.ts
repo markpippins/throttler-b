@@ -19,6 +19,7 @@ import {
   AdmissionReceipt,
 } from '../types';
 import { computeSha256DigestSync } from '../../governance/adapters/throttlerVfsAdapter';
+import { globalThemeRegistry } from './themeRegistry';
 
 /**
  * Deep freezes an object to guarantee immutability.
@@ -48,8 +49,11 @@ function deepFreeze<T>(obj: T): Readonly<T> {
 export function deriveVisualTreatment(
   envelope: EpistemicEnvelope,
   serverStatus: WitnessedServerStatus,
-  refusalReason?: string
+  refusalReason?: string,
+  themeId?: string
 ): VisualTreatment {
+  const token = globalThemeRegistry.resolveStateToken(envelope, serverStatus, themeId);
+
   // 1. Refusal is authoritative and live, but strictly BLOCKING with managed rose treatment
   if (serverStatus === 'refusal') {
     return {
@@ -57,8 +61,8 @@ export function deriveVisualTreatment(
       serverStatus: 'refusal',
       statusBadge: 'REFUSED (LIVE)',
       badgeTone: 'rose',
-      borderStyle: 'border-rose-500/40 bg-rose-950/20 text-rose-300',
-      glyph: '🛑',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: true,
       refusalPredicate: refusalReason || 'Guard proposition evaluation rejected by doctrine.',
       caption: `LIVE · server-witnessed refusal · predicate=${refusalReason || 'doctrine_refusal'}`,
@@ -72,8 +76,8 @@ export function deriveVisualTreatment(
       serverStatus: 'unknown',
       statusBadge: 'DEMO · FIXTURE',
       badgeTone: 'violet',
-      borderStyle: 'border-dashed border-violet-500/40 bg-violet-950/20 text-violet-300',
-      glyph: '🧪',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: false,
       caption: 'DEMO · fixture · non-authoritative',
     };
@@ -86,8 +90,8 @@ export function deriveVisualTreatment(
       serverStatus: 'complete',
       statusBadge: 'LIVE',
       badgeTone: 'emerald',
-      borderStyle: 'border-emerald-500/30 bg-emerald-950/10 text-emerald-300',
-      glyph: '🟢',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: false,
       caption: 'LIVE · server-witnessed · current',
     };
@@ -100,8 +104,8 @@ export function deriveVisualTreatment(
       serverStatus: serverStatus === 'missing_lineage' ? 'missing_lineage' : 'unknown',
       statusBadge: 'UNKNOWN LINEAGE',
       badgeTone: 'neutral',
-      borderStyle: 'border-dashed border-slate-500/40 bg-slate-900/40 text-slate-400',
-      glyph: '⚪',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: true,
       caption: 'UNKNOWN · unverifiable lineage · indeterminate provenance',
     };
@@ -114,8 +118,8 @@ export function deriveVisualTreatment(
       serverStatus: 'stale',
       statusBadge: 'STALE',
       badgeTone: 'amber',
-      borderStyle: 'border-amber-500/40 bg-amber-950/20 text-amber-300',
-      glyph: '⚠️',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: false,
       caption: 'DEGRADED · freshness threshold exceeded · server-derived',
     };
@@ -127,8 +131,8 @@ export function deriveVisualTreatment(
       serverStatus: 'drift',
       statusBadge: 'DRIFT DETECTED',
       badgeTone: 'amber',
-      borderStyle: 'border-amber-500/40 bg-amber-950/20 text-amber-300',
-      glyph: '⚠️',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
+      glyph: token.glyph,
       isBlocking: false,
       caption: 'DEGRADED · baseline drift detected · verification required',
     };
@@ -140,7 +144,7 @@ export function deriveVisualTreatment(
       serverStatus: 'duplicate_retry',
       statusBadge: 'RETRYING',
       badgeTone: 'amber',
-      borderStyle: 'border-dotted border-amber-500/40 bg-amber-950/20 text-amber-300',
+      borderStyle: `${token.border} ${token.surfaceTint}`,
       glyph: '🔄',
       isBlocking: false,
       caption: 'DEGRADED · idempotency retry in-flight',
@@ -153,8 +157,8 @@ export function deriveVisualTreatment(
     serverStatus: 'unknown',
     statusBadge: 'UNKNOWN',
     badgeTone: 'neutral',
-    borderStyle: 'border-slate-700 bg-slate-900/30 text-slate-400',
-    glyph: '❓',
+    borderStyle: `${token.border} ${token.surfaceTint}`,
+    glyph: token.glyph,
     isBlocking: false,
     caption: 'UNKNOWN · status unmeasured',
   };

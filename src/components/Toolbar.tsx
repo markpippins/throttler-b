@@ -104,10 +104,11 @@ interface ToolbarProps {
 const THEMES = [
   { id: 'theme-system', name: 'System Default' },
   { id: 'theme-light', name: 'Light (Pure Clean)' },
-  { id: 'theme-dark', name: 'Dark Mode' },
+  { id: 'theme-dark', name: 'Dark Slate' },
   { id: 'theme-nord', name: 'Nord Frost' },
   { id: 'theme-solarized', name: 'Solarized Warm' },
-  { id: 'theme-midnight', name: 'Midnight Blue' },
+  { id: 'theme-midnight', name: 'Midnight Deep' },
+  { id: 'theme-steel', name: 'Steel (Operator IDE)' },
 ];
 
 export const Toolbar: React.FC<ToolbarProps> = ({

@@ -11,7 +11,7 @@ export interface SparklineProps {
 
 export const SparklineRelic: React.FC<SparklineProps> = ({
   data = [12, 19, 3, 5, 2, 3, 20, 15, 25, 22, 30, 28, 35],
-  color = '#3b82f6',
+  color = 'var(--color-chart-primary, rgb(var(--color-accent-text)))',
   height = 48,
   width = '100%',
   fill = true,
@@ -20,6 +20,7 @@ export const SparklineRelic: React.FC<SparklineProps> = ({
   const max = Math.max(...points, 1);
   const min = Math.min(...points, 0);
   const range = max - min || 1;
+  const gradId = `spark-grad-${color.replace(/[^a-zA-Z0-9_-]/g, '') || 'default'}`;
 
   const svgWidth = 240;
   const svgHeight = height;
@@ -45,12 +46,12 @@ export const SparklineRelic: React.FC<SparklineProps> = ({
         preserveAspectRatio="none"
       >
         <defs>
-          <linearGradient id={`spark-grad-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity={0.35} />
             <stop offset="100%" stopColor={color} stopOpacity={0.02} />
           </linearGradient>
         </defs>
-        {fill && <path d={fillD} fill={`url(#spark-grad-${color.replace('#', '')})`} />}
+        {fill && <path d={fillD} fill={`url(#${gradId})`} />}
         <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         {coordinates.map((c, i) => {
           const [cx, cy] = c.split(',');
@@ -60,7 +61,7 @@ export const SparklineRelic: React.FC<SparklineProps> = ({
               cx={cx}
               cy={cy}
               r={i === points.length - 1 ? 3.5 : 2}
-              fill={i === points.length - 1 ? color : '#ffffff'}
+              fill={i === points.length - 1 ? color : 'rgb(var(--color-surface-base))'}
               stroke={color}
               strokeWidth="1.5"
             />
@@ -90,7 +91,7 @@ export const GaugeRelic: React.FC<GaugeProps> = ({
   max = 100,
   label = 'utilization',
   unit = '%',
-  color = '#10b981',
+  color = 'var(--color-chart-secondary, rgb(var(--color-accent-text)))',
 }) => {
   const percentage = Math.min(Math.max((value / max) * 100, 0), 100);
   const radius = 38;

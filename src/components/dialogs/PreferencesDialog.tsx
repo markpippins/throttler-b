@@ -76,6 +76,7 @@ export const PreferencesDialog: React.FC<PreferencesDialogProps> = ({
                 { id: 'theme-nord', name: 'Nord Frost' },
                 { id: 'theme-solarized', name: 'Solarized Warm' },
                 { id: 'theme-midnight', name: 'Midnight Deep' },
+                { id: 'theme-steel', name: 'Steel (Operator IDE)' },
               ].map((t) => (
                 <button
                   key={t.id}
