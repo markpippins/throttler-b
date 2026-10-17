@@ -36,6 +36,8 @@ import { AegisStateMachineRelic } from './relics/AegisStateMachineRelic';
 import { DockableTelemetryDrawer } from '../components/bottom-pane/DockableTelemetryDrawer';
 import { UnifiedContainerScope } from './core/containerScope';
 import { GenerativeResponseViewer } from './components/GenerativeResponseViewer';
+import { globalThemeRegistry } from './core/themeRegistry';
+import { Palette } from 'lucide-react';
 
 interface SurfaceRecomposedViewProps {
   activeTab?: SurfaceRecomposedTab;
@@ -87,6 +89,7 @@ export const SurfaceRecomposedView: React.FC<SurfaceRecomposedViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showOperator, setShowOperator] = useState(false);
   const [selectedWidget, setSelectedWidget] = useState<AbsorbedWidget | null>(null);
+  const [activeThemeId, setActiveThemeId] = useState<string>(() => globalThemeRegistry.getActiveThemeId());
 
   // All harvested widgets from absorption service
   const allWidgets = useMemo(() => widgetAbsorptionService.getHarvestedWidgets(), []);
@@ -223,6 +226,26 @@ export const SurfaceRecomposedView: React.FC<SurfaceRecomposedViewProps> = ({
 
         {/* Right side utility */}
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-muted/40 border border-border/50 text-xs">
+            <Palette className="w-3.5 h-3.5 text-primary" />
+            <select
+              aria-label="Active Theme Palette"
+              value={activeThemeId}
+              onChange={(e) => {
+                const next = e.target.value;
+                setActiveThemeId(next);
+                globalThemeRegistry.setTheme(next, true);
+              }}
+              className="bg-transparent text-xs font-mono text-foreground focus:outline-none cursor-pointer"
+            >
+              {globalThemeRegistry.getAllThemes().map((t) => (
+                <option key={t.id} value={t.id} className="bg-slate-900 text-slate-100">
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             onClick={() => setShowOperator(!showOperator)}
             className={`p-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors ${

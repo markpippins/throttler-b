@@ -4,6 +4,7 @@ export * from './SurfaceRecomposedView';
 export * from './WidgetRegistryView';
 export * from './registry';
 export * from './core/contextSnapshot';
+export * from './core/themeRegistry';
 export * from './core/interactionContextStore';
 export * from './core/actionInterpreter';
 export * from './core/containerScope';

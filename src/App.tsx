@@ -46,6 +46,7 @@ import { runGovernancePilotTests } from './governance/tests/runPilotTests';
 import { apiService } from './services/apiService';
 import { SurfaceRecomposedView } from './surface/SurfaceRecomposedView';
 import type { SurfaceRecomposedTab } from './surface/types';
+import { globalThemeRegistry } from './surface/core/themeRegistry';
 
 const BOOKMARKS_STORAGE_KEY = 'file-explorer-bookmarks';
 
@@ -300,7 +301,7 @@ export const App: React.FC = () => {
         const savedTheme = StorageService.getLocalItem('theme', 'theme-system');
         if (savedTheme) {
           setTheme(savedTheme);
-          document.body.className = `font-sans ${savedTheme}`;
+          globalThemeRegistry.setTheme(savedTheme, true);
         }
         const savedViewMode = StorageService.getLocalItem('displayMode', 'grid');
         if (savedViewMode) setDisplayMode(savedViewMode as DisplayMode);
@@ -325,9 +326,9 @@ export const App: React.FC = () => {
     loadData();
   }, [addToast]);
 
-  // Sync theme to body class
+  // Sync theme to body class & ThemeRegistry (B-4 / EAC-4)
   useEffect(() => {
-    document.body.className = `font-sans ${theme}`;
+    globalThemeRegistry.setTheme(theme, true);
   }, [theme]);
 
   // Active path and items for current active pane
