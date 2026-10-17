@@ -37,6 +37,9 @@ CI/CD pipeline. Package/directory rename is **pending** — see §0.4 item **B-1
 | **B-2 — Variant preservation (GAP-1)** | `typescript/projection-core/src/compiler/compiler.ts` `selectWidgets()` preserves requested `widgetVariant` / `state.<TOKEN>` into `widget.props` (`variant`, `catalogVariant`, `widgetVariant`, `stateToken`) | **RESOLVED & VERIFIED** |
 | **B-3 — `SurfaceContext` catalog entry (GAP-2)** | `typescript/projection-core/src/compiler/widgetSelector.ts` (`CANONICAL_WIDGET_CATALOG`) + `widget/catalog.ts` (`AuthorityDial` implementing `SurfaceContext`, header bias, highSalience) | **RESOLVED & VERIFIED** |
 | **B-4 — `ThemeRegistry` & 6-theme `stateTokens` matrix (U-4 / EAC-4)** | `src/surface/core/themeRegistry.ts` + `index.html` — 6 authoritative themes (`theme-light`, `theme-dark`, `theme-midnight`, `theme-nord`, `theme-solarized`, `theme-steel`) with $\ge 2$-channel state distinctness (`color`, `strokePattern`, `glyph`) | **RESOLVED & VERIFIED** |
+| **B-5 — Shared surface-family region envelope (L-3)** | `src/surface/SurfaceRecomposedView.tsx` (`SURFACE_FAMILY_REGION_ENVELOPE = 'max-w-7xl mx-auto w-full space-y-5 animate-in fade-in-50 duration-150'`) wrapping `relics`, `viewspec`, `governance`, `vfs-projection`, and `registry` | **RESOLVED & VERIFIED** |
+| **B-6 — `ViewSpecStudioView` deprecation banner & §9.1 Path-Bridge** | `src/surface/components/ViewSpecStudioView.tsx` (`VIEW_SPEC_STUDIO_DEPRECATION_NOTICE` + `DEMO · FIXTURE · NON-AUTHORITATIVE` disclosure banner) & §9.1 `widgets/<name>/` target table | **RESOLVED & VERIFIED** |
+| **B-7 — Dead Angular services & components removed** | Deleted `src/services/ui-preferences.service.ts` and all 25 orphaned Angular `.service.ts` / `.component.ts` / `.component.html` / `.directive.ts` / `.model.ts` remnants; only live React services remain in `src/services/` | **RESOLVED & VERIFIED** |
 | **Phase 3 Generative DesignIR → ViewSpec Compilation & Per-Section Provenance (Condition 4 / F-4)** | `src/surface/compiler/generativeCompiler.ts` + `src/surface/components/GenerativeResponseViewer.tsx` — compiles real `DesignIR` via `compileDesignIR` with per-section provenance captions and ungrounded-data rejection | **RESOLVED & VERIFIED** |
 
 The container channel map satisfies **Condition 2** as written:
@@ -65,19 +68,18 @@ All three locations (`widgets/surface-ui/src/core/`, `typescript/projection-core
 
 `ThemeRegistry` (`src/surface/core/themeRegistry.ts`) and `index.html` now implement all 6 authoritative Throttler themes (`theme-light`, `theme-dark`, `theme-midnight`, `theme-nord`, `theme-solarized`, `theme-steel`) alongside the 5-state `stateTokens` matrix (`live`, `degraded`, `refusal`, `unknown`, `demo`). Every state in every theme is bound across $\ge 2$ independent perceptual channels (chromatic hue/tint + structural stroke pattern `solid`/`dashed`/`double`/`dotted` + semantic glyph), and `ThemeRegistry.verifyAllThemes()` programmatically asserts EAC-4 distinctness so theme-switching never re-normalizes degraded or refused states.
 
-**B-5 — [OPEN] Surface family has no shared region envelope (L-3).** In `src/surface/SurfaceRecomposedView.tsx`
-the tab bodies still use divergent envelopes — `max-w-7xl mx-auto` (line 506), `max-w-6xl mx-auto`
-(line 570), `-m-5` full-bleed (line 643). A surface family should share one region frame; only content
-density should vary.
+**B-5 — [RESOLVED] Shared surface-family region envelope (L-3).**
 
-**B-6 — [RESOLVED] §9.1 Path-Bridge targeted the wrong root.** It mapped every subsystem to
-`angular/projects/<name>/` (the old Angular-CLI convention). **No `angular/projects/` directory exists.**
-The canonical target is now **`widgets/<name>/`**. Corrected in §9.1.
+`SurfaceRecomposedView.tsx` now wraps all five secondary surface-family tabs (`relics`, `viewspec`, `governance`, `vfs-projection`, and `registry`) inside a single shared region frame (`SURFACE_FAMILY_REGION_ENVELOPE = 'max-w-7xl mx-auto w-full space-y-5 animate-in fade-in-50 duration-150'`), and `ViewSpecStudioView.tsx` / `GovernanceWorkbenchView.tsx` / `WidgetRegistryView.tsx` inherit the shared container width (`w-full`) rather than jumping between `max-w-7xl`, `max-w-6xl`, `max-w-5xl`, and `-m-5` full-bleed.
 
-**B-7 — [OPEN] 25 orphaned Angular services.** `src/services/*.service.ts` are Angular (`@Injectable`,
-`signal`, `inject` from `@angular/core`) but the app is React (`index.tsx` → `ReactDOM.createRoot`) and
-never consumes them. Notably `ui-preferences.service.ts`, cited in §9 as the theme-token home, is one of
-them — it is **dead code** and must not be treated as live theme infrastructure.
+**B-6 — [RESOLVED] `ViewSpecStudioView` deprecation disclosure banner & §9.1 Path-Bridge.**
+
+1. `src/surface/components/ViewSpecStudioView.tsx` now exports `VIEW_SPEC_STUDIO_DEPRECATION_NOTICE` and renders a prominent `DEPRECATED PROTOTYPE SURFACE · DEMO FIXTURE SWITCHBOARD (B-6)` + `🧪 DEMO · FIXTURE · NON-AUTHORITATIVE` disclosure banner with a direct action button to open the canonical AI Vocabulary Studio (`GenerativeResponseViewer`).
+2. §9.1 Path-Bridge mapped every subsystem to `angular/projects/<name>/` (the old Angular-CLI convention). **No `angular/projects/` directory exists.** The canonical target is now **`widgets/<name>/`**. Corrected in §9.1.
+
+**B-7 — [RESOLVED] Removed dead Angular `ui-preferences.service.ts` and orphaned Angular remnants.**
+
+Deleted `src/services/ui-preferences.service.ts` along with all 25 orphaned Angular `.service.ts` files, dead `.component.ts`/`.component.html` templates, `src/directives/auto-focus-select.directive.ts`, and `src/models/*.model.ts` that were never imported by the React application (`index.tsx` → `ReactDOM.createRoot`). Only live React services (`apiService.ts`, `fileSystemService.ts`, `geminiChatService.ts`, `searchIndexService.ts`, `soundService.ts`, `storageService.ts`, `streamSearchService.ts`) remain in `src/services/`.
 
 ### 0.4 Phase status correction
 
