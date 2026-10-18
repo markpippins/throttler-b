@@ -12,6 +12,7 @@ export * from './relics/AegisStateMachineRelic';
 export * from './relics/UmlDiagramRelic';
 export * from './compiler/generativeCompiler';
 export * from './components/GenerativeResponseViewer';
+export * from './components/ViewSpecStudioView';
 export * from '../components/dialogs/GovernedMutationAffordance';
 export * from '../components/canvas/DiagramSurface';
 export * from '../components/navigation/UniversalNavigator';
