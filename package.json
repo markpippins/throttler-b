@@ -6,7 +6,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "tsx src/surface/tests/themeAndGenerative.test.ts && tsx typescript/projection-core/src/runtime/doctrineLookup.registry.test.ts && tsx widgets/surface-ui/src/core/runtime/doctrineLookup.registry.test.ts"
+    "test": "tsx scripts/run-tests.ts"
   },
   "prettier": {
     "printWidth": 100,
