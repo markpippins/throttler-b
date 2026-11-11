@@ -1,0 +1,26 @@
+[Unit]
+Description=throttler-ui — Vite dev server (port 4211)
+Documentation=https://github.com/nexus/angular/throttler-ui
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/codex/dev/nexus/angular/throttler-ui
+
+Environment=NODE_ENV=development
+Environment=PORT=4211
+
+ExecStart=/home/codex/.nvm/versions/node/v24.15.0/bin/npm run dev
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+ProtectHome=read-only
+ReadWritePaths=/home/codex/dev/nexus/angular/throttler-ui
+
+[Install]
+WantedBy=default.target
