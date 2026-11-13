@@ -15,11 +15,19 @@ export default defineConfig({
     },
   },
   server: {
+    // Hosts accepted by Vite's Host-header check. It refuses unknown Host
+    // values even when bound to 0.0.0.0, so the LAN name comes from the
+    // environment (bin/start-nexus-uis.sh installs it) rather than the repo.
+    allowedHosts: (process.env.NEXUS_UI_ALLOWED_HOSTS ?? '')
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean),
     host: '0.0.0.0',
-    port: 3000,
+    port: 4211,
+    strictPort: true,
   },
   preview: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 4211,
   },
 });
