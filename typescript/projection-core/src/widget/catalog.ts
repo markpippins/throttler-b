@@ -1,4 +1,5 @@
 import { CapabilityId, DensitySetting, LayoutBias } from "../types/designIR";
+import type { CompositionSchema } from "../types/composition";
 
 export interface WidgetDefinition {
   id: string;
@@ -7,6 +8,11 @@ export interface WidgetDefinition {
   variants?: string[];
   defaultDensity?: DensitySetting;
   defaultLayout?: LayoutBias;
+  /**
+   * Declared host slots. Omitted = leaf widget (every relic absorbed today is a leaf).
+   * See record d43a8d6d — composition is a separate axis from Region placement.
+   */
+  composition?: CompositionSchema;
 }
 
 export class WidgetCatalog {
@@ -116,6 +122,11 @@ export class WidgetCatalog {
       defaultDensity: "highSalience",
       defaultLayout: "header",
     });
+  }
+
+  /** Registers or replaces a definition. Opt-in: defaults are unchanged by callers that skip it. */
+  register(definition: WidgetDefinition): void {
+    this.widgets.set(definition.id, definition);
   }
 
   getWidget(id: string): WidgetDefinition | undefined {

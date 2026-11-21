@@ -1,11 +1,13 @@
 export * from "./types/designIR";
 export * from "./types/capabilities";
 export * from "./types/viewSpec";
+export * from "./types/composition";
 export * from "./adapter/types";
 export * from "./adapter/runtime";
 export * from "./adapter/governed";
 export * from "./widget/catalog";
 export * from "./widget/contractCatalog";
+export * from "./widget/hostDefinitions";
 export * from "./compiler/compiler";
 export * from "./compiler/regionResolver";
 export * from "./compiler/incrementalCompiler";
@@ -25,6 +27,7 @@ export * from "./runtime/governedAction";
 export * from "./runtime/replayVerifier";
 export * from "./runtime/witnessedRun";
 export * from "./runtime/contractAdmission";
+export * from "./runtime/rendererHost";
 export * from "./runtime/modes";
 export * from "./runtime/lifecycle";
 export type {

@@ -34,12 +34,15 @@ import {
 } from '../typescript/projection-core/src/runtime/replayVerifier.test.js';
 import { runWitnessedRunConformance as pcWitnessedRun } from '../typescript/projection-core/src/runtime/witnessedRun.test.js';
 import { runContractCatalogConformance as pcContractCatalog } from '../typescript/projection-core/src/widget/contractCatalog.test.js';
+import { runCompositionConformance as pcComposition } from '../typescript/projection-core/src/types/composition.test.js';
+import { runRendererHostConformance as pcRendererHost } from '../typescript/projection-core/src/runtime/rendererHost.test.js';
 import { runRegistryConformance as uiRegistryConformance } from '../widgets/surface-ui/src/core/runtime/doctrineLookup.registry.test.js';
 import { runDoctrineLookupConformance as uiDoctrineLookup } from '../widgets/surface-ui/src/core/runtime/doctrineLookup.test.js';
 import { runLifecycleConformance as uiLifecycle } from '../widgets/surface-ui/src/core/runtime/lifecycle.test.js';
 import { runReplayConformance as uiReplay } from '../widgets/surface-ui/src/core/runtime/replayVerifier.test.js';
 import { runWitnessedRunConformance as uiWitnessedRun } from '../widgets/surface-ui/src/core/runtime/witnessedRun.test.js';
 import { runContractCatalogConformance as uiContractCatalog } from '../widgets/surface-ui/src/core/widget/contractCatalog.test.js';
+import { runSlotCompositionConformance as uiSlotComposition } from '../src/surface/tests/slotComposition.test.js';
 
 type Runnable = () => unknown | Promise<unknown>;
 
@@ -66,6 +69,9 @@ const SUITES: ReadonlyArray<{ name: string; run: Runnable }> = [
   { name: 'projection-core/lifecycle', run: pcLifecycle },
   { name: 'projection-core/witnessed-run', run: pcWitnessedRun },
   { name: 'projection-core/contract-catalog', run: pcContractCatalog },
+  { name: 'projection-core/composition', run: pcComposition },
+  { name: 'projection-core/renderer-host', run: pcRendererHost },
+  { name: 'surface/slot-composition', run: uiSlotComposition },
   { name: 'surface-ui/registry', run: uiRegistryConformance },
   { name: 'surface-ui/doctrine-lookup', run: uiDoctrineLookup },
   { name: 'surface-ui/lifecycle', run: uiLifecycle },
