@@ -12,6 +12,7 @@ import type { CompositionRule, SlotBinding } from "./composition.js";
 import {
   EPISTEMIC_CLAIMS,
   claimStrength,
+  hardViolations,
   hasComposition,
   resolveSlots,
   validateComposition,
@@ -112,7 +113,17 @@ export function runCompositionConformance(): { allPassed: boolean; logs: string[
   ok(servers, "servers slot present");
   equal(servers.status, "degraded-missing", "unfilled required slot degrades rather than vanishing");
   ok(servers.caption?.includes("servers"), `caption must name the slot, got ${String(servers.caption)}`);
-  equal(validateComposition(missingServers, resolve).length, 0, "an unfilled required slot is a render-time degradation, not a rejection");
+
+  // V9: the gap is REPORTED, and the surface still renders (§8).
+  const missingViolations = validateComposition(missingServers, resolve);
+  const v9Servers = missingViolations.filter((violation) => violation.rule === "V9");
+  equal(v9Servers.length, 1, "exactly one V9 is reported for the one unfilled required slot");
+  equal(v9Servers[0]?.severity, "degraded", "V9 is reported as degraded, not as a rejection");
+  equal(v9Servers[0]?.slotId, "servers", "V9 names the unfilled slot");
+  equal(v9Servers[0]?.hostWidgetId, "catalog-1", "V9 names the host");
+  ok(v9Servers[0]?.message.includes("degraded placeholder"), "V9 says the slot renders a placeholder");
+  equal(hardViolations(missingViolations).length, 0, "V9 contributes no hard violation");
+  ok(validateViewSpec(missingServers, resolve), "V9 does not reject the spec: the surface still renders");
 
   const withoutOptional = resolveSlots(host, SERVICEDOMAIN_RUNTIME_CATALOG.composition!, [
     catalogBindings[0]!,
@@ -120,7 +131,8 @@ export function runCompositionConformance(): { allPassed: boolean; logs: string[
     catalogBindings[2]!,
   ]);
   equal(withoutOptional.find((slot) => slot.slotId === "deployments")?.status, "empty", "unfilled optional slot is simply empty");
-  logs.push("AC4: required slot degrades with a caption; optional slot is empty");
+  equal(validateComposition(surface([host], [catalogBindings[0]!, catalogBindings[1]!, catalogBindings[2]!]), resolve).length, 0, "an unfilled optional slot is not a V9");
+  logs.push("AC4/V9: required slot degrades with a caption and a reported V9; optional slot is empty and unreported");
 
   // ── V1: undeclared slot / host without a schema ────────────────────
   const v1 = validateComposition(surface([host], [bind("catalog-1", "nope", instance("t-x", "DataTable", "EntityCollection"))]), resolve);
@@ -219,11 +231,69 @@ export function runCompositionConformance(): { allPassed: boolean; logs: string[
     surface([demoHost], [bind("catalog-demo", "systems", instance("tbl-demo", "DataTable", "EntityCollection", { envelope: "demo" }))]),
     resolve,
   );
-  equal(degradedInsideDemo.length, 0, "an occupant no stronger than its host is admitted");
+  equal(hardViolations(degradedInsideDemo).length, 0, "an occupant no stronger than its host is admitted");
+  ok(degradedInsideDemo.every((violation) => violation.rule === "V9"), "only V9 reports remain for the slots left unbound");
   equal(claimStrength("refusal"), claimStrength("live"), "refusal carries live's claim strength (overlay, not a weaker envelope)");
   equal(weakestClaim(["live", "unknown", "degraded"]), "unknown", "weakestClaim picks the weakest");
   equal(weakestClaim([]), undefined, "weakestClaim of nothing is undefined");
   logs.push("AC5/V7: envelope monotonicity rejects live-inside-demo and names both");
+
+  // ── V7 (escape closed): an occupant with no envelope does not break the chain ──
+  const demoRoot = instance("demo-root", "ServiceDomainAndRuntimeCatalog", "EntityCollection", { envelope: "demo" });
+  const plainMid = instance("plain-mid", "ServiceDomainAndRuntimeCatalog", "EntityCollection");
+  const liveLeaf = instance("live-leaf", "DataTable", "EntityCollection", { envelope: "live" });
+  const nested = validateComposition(
+    surface([demoRoot], [
+      bind("demo-root", "systems", plainMid),
+      bind("plain-mid", "systems", liveLeaf),
+    ]),
+    resolve,
+  );
+  const nestedV7 = nested.filter((violation) => violation.rule === "V7");
+  equal(nestedV7.length, 1, "V7 is reached through an intermediate host that declares no envelope");
+  equal(nestedV7[0]?.hostWidgetId, "plain-mid", "V7 is attributed to the host that actually contains the leaf");
+  equal(nestedV7[0]?.slotId, "systems", "V7 names the slot holding the leaf");
+  ok(nestedV7[0]?.message.includes("live") && nestedV7[0]?.message.includes("demo"), "V7 message names the leaf's claim and the inherited host claim");
+  ok(nestedV7[0]?.message.includes("inherited"), `V7 message explains the inherited claim, got ${String(nestedV7[0]?.message)}`);
+  equal(nested.filter((violation) => violation.rule === "V7" && violation.hostWidgetId === "demo-root").length, 0, "the silent occupant itself inherits rather than violating");
+  ok(!validateViewSpec(surface([demoRoot], [bind("demo-root", "systems", plainMid), bind("plain-mid", "systems", liveLeaf)]), resolve), "a nested V7 violation still rejects the spec");
+
+  const demoLeaf = instance("demo-leaf", "DataTable", "EntityCollection", { envelope: "demo" });
+  equal(
+    validateComposition(
+      surface([demoRoot], [bind("demo-root", "systems", plainMid), bind("plain-mid", "systems", demoLeaf)]),
+      resolve,
+    ).filter((violation) => violation.rule === "V7").length,
+    0,
+    "a nested occupant no stronger than the inherited claim is admitted",
+  );
+  equal(
+    resolveSlots(
+      plainMid,
+      SERVICEDOMAIN_RUNTIME_CATALOG.composition!,
+      [bind("plain-mid", "systems", instance("tbl-live3", "DataTable", "EntityCollection", { envelope: "live" }))],
+      "demo",
+    )[0]?.effectiveEnvelope,
+    "demo",
+    "resolution weakens a host's claim by its inherited one, so display and validation agree",
+  );
+  logs.push("V7: inherited claim is threaded through recursion and resolution");
+
+  // ── V9: a pinned host with no bindings at all still reports its required slots ──
+  const unboundAtlas = instance("atlas-unbound", "AtlasTopologyCanvas", "InspectorPanel");
+  const zeroBound = validateComposition(surface([host, unboundAtlas], catalogBindings), resolve);
+  const zeroBoundV9 = zeroBound.filter((violation) => violation.rule === "V9");
+  equal(zeroBoundV9.length, 2, "both required atlas slots are reported on a host with no bindings");
+  ok(zeroBoundV9.every((violation) => violation.hostWidgetId === "atlas-unbound"), "every V9 belongs to the unbound host");
+  equal(zeroBoundV9.map((violation) => violation.slotId).join(","), "nodes,edges", "V9 lists the required slots in declaration order");
+  ok(validateViewSpec(surface([host, unboundAtlas], catalogBindings), resolve), "an entirely unbound pinned host does not reject the surface");
+
+  const nestedUnfilled = validateComposition(
+    surface([host], [bind("catalog-1", "systems", unboundAtlas)]),
+    resolve,
+  ).filter((violation) => violation.rule === "V9");
+  ok(nestedUnfilled.some((violation) => violation.hostWidgetId === "atlas-unbound"), "V9 reaches a nested host, not only roots");
+  logs.push("V9: unbound and nested hosts report unfilled required slots without rejecting");
 
   // ── V8: renderer compatibility ─────────────────────────────────────
   const canvasHost = instance("atlas-1", "AtlasTopologyCanvas", "InspectorPanel");

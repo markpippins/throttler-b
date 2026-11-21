@@ -1,6 +1,6 @@
 import { CapabilityId, PriorityLevel, HierarchySetting, DensitySetting } from "./designIR";
 import { CapabilityContract, SurfaceContextContract } from "./capabilities";
-import { validateComposition } from "./composition";
+import { hardViolations, validateComposition } from "./composition";
 import type { CompositionDefinitionResolver, EpistemicClaim, RendererRef, SlotBinding } from "./composition";
 
 /**
@@ -200,8 +200,11 @@ export function validateViewSpec(
     && Array.isArray(value.widgets)
     && Array.isArray(value.adapters)
     && Array.isArray(value.events)
-    // Composition rules (V1–V8) only run when a definition resolver is supplied: they need
-    // the hosts' declared schemas. Structural checks above stay resolver-free.
+    // Composition rules (V1–V9) only run when a definition resolver is supplied: they need
+    // the hosts' declared schemas. Structural checks above stay resolver-free. Only hard
+    // violations reject: V9 reports an unfilled required slot that renders a placeholder,
+    // and §8 requires the surface to still render (§8 "validation reports, and the surface
+    // still renders").
     && (resolveDefinition === undefined
-      || validateComposition(value as ViewSpec, resolveDefinition).length === 0);
+      || hardViolations(validateComposition(value as ViewSpec, resolveDefinition)).length === 0);
 }

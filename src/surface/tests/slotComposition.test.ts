@@ -22,11 +22,11 @@ import {
   type CapabilityId,
   type DocumentationEntry,
   type DocumentationRegistry,
-  type ResolvedSlot,
   type SlotBinding,
   type ViewSpec,
   type WidgetInstance,
 } from '../../../typescript/projection-core/src/index';
+import { SlotHost } from '../components/SlotHost';
 import { AUTHORITATIVE_THEMES } from '../core/themeRegistry';
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -51,35 +51,6 @@ function bind(hostWidgetId: string, slotId: string, occupant: WidgetInstance, or
   const binding: SlotBinding = { hostWidgetId, slotId, occupant };
   if (order !== undefined) binding.order = order;
   return binding;
-}
-
-/** Minimal host renderer: one <section> per declared slot, in declaration order. */
-function SlotHost(props: { slots: ResolvedSlot[] }) {
-  return createElement(
-    'div',
-    { 'data-host': 'catalog' },
-    props.slots.map((slot) =>
-      createElement(
-        'section',
-        {
-          key: slot.slotId,
-          'data-slot': slot.slotId,
-          'data-status': slot.status,
-          'data-envelope': slot.effectiveEnvelope ?? 'none',
-          'data-slot-envelope': slot.descriptor.docAnchor ?? '',
-        },
-        slot.status === 'degraded-missing'
-          ? createElement('p', { 'data-caption': 'missing' }, slot.caption ?? '')
-          : slot.occupants.map((occupant) =>
-              createElement(
-                'div',
-                { key: occupant.id, 'data-occupant': occupant.widget.type },
-                occupant.id,
-              ),
-            ),
-      ),
-    ),
-  );
 }
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -114,7 +85,9 @@ export function runSlotCompositionConformance(): { allPassed: boolean; logs: str
   const schema = SERVICEDOMAIN_RUNTIME_CATALOG.composition;
   assert(schema, 'catalog declares a CompositionSchema');
   const filled = resolveSlots(host, schema, bindings);
-  const filledMarkup = renderToStaticMarkup(createElement(SlotHost, { slots: filled }));
+  const filledMarkup = renderToStaticMarkup(
+    createElement(SlotHost, { hostWidgetId: host.id, slots: filled }),
+  );
 
   equal(countOccurrences(filledMarkup, 'data-slot='), 4, 'four slots rendered');
   equal(countOccurrences(filledMarkup, 'data-status="filled"'), 4, 'all four slots render filled');
@@ -123,10 +96,24 @@ export function runSlotCompositionConformance(): { allPassed: boolean; logs: str
   assert(filledMarkup.includes('data-slot="deployments"'), 'deployments slot in markup');
   logs.push('AC3: host rendered four populated slots from four DataTable occupants');
 
+  // The markup above comes from the shipped `SlotHost` component, not a test double. Its
+  // envelope treatment must travel the theme's state-token channel (EAC-4: >= 2 perceptual
+  // channels), so a demo host is not signalled by colour alone.
+  assert(filledMarkup.includes('data-slot-host="catalog-1"'), 'markup comes from the real SlotHost component');
+  const demoHost = { ...host, envelope: 'demo' as const };
+  const demoMarkup = renderToStaticMarkup(
+    createElement(SlotHost, { hostWidgetId: demoHost.id, slots: resolveSlots(demoHost, schema, bindings) }),
+  );
+  assert(demoMarkup.includes('data-envelope="demo"'), 'a demo host stamps its envelope on every slot');
+  assert(demoMarkup.includes('data-stroke-pattern="dashed"'), 'envelope reaches markup through the theme token channel, not colour alone');
+  logs.push('AC3: SlotHost is surface code and renders envelope treatment via theme state tokens');
+
   // ── AC4: a required slot that is unfilled renders a caption ────────
   const partialBindings = bindings.filter((binding) => binding.slotId !== 'servers');
   const partialSlots = resolveSlots(host, schema, partialBindings);
-  const partialMarkup = renderToStaticMarkup(createElement(SlotHost, { slots: partialSlots }));
+  const partialMarkup = renderToStaticMarkup(
+    createElement(SlotHost, { hostWidgetId: host.id, slots: partialSlots }),
+  );
 
   equal(countOccurrences(partialMarkup, 'data-status="degraded-missing"'), 1, 'one degraded slot rendered');
   assert(partialMarkup.includes('data-caption="missing"'), 'degraded slot renders a caption');

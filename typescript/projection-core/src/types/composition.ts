@@ -120,15 +120,43 @@ export interface SlotBinding {
 
 export const DEFAULT_MAX_COMPOSITION_DEPTH = 3;
 
-// ── Validation (§8, V1–V8) ───────────────────────────────────────────
+// ── Validation (§8, V1–V9) ───────────────────────────────────────────
 
-export type CompositionRule = "V1" | "V2" | "V3" | "V4" | "V5" | "V6" | "V7" | "V8";
+export type CompositionRule = "V1" | "V2" | "V3" | "V4" | "V5" | "V6" | "V7" | "V8" | "V9";
+
+/**
+ * `violation` rejects the surface. `degraded` is reported so the operator can see it, but is
+ * not a rejection: V9 describes a slot that renders a named placeholder (§7.2), and a missing
+ * panel must not take the whole surface down with it (§8 "the surface still renders").
+ */
+export type CompositionSeverity = "violation" | "degraded";
 
 export interface CompositionViolation {
   rule: CompositionRule;
+  severity: CompositionSeverity;
   hostWidgetId?: string;
   slotId?: string;
   message: string;
+}
+
+/** V9 is the only reporting rule; everything else is a rejection. */
+export const COMPOSITION_RULE_SEVERITY: Readonly<Record<CompositionRule, CompositionSeverity>> = {
+  V1: "violation",
+  V2: "violation",
+  V3: "violation",
+  V4: "violation",
+  V5: "violation",
+  V6: "violation",
+  V7: "violation",
+  V8: "violation",
+  V9: "degraded",
+};
+
+/** The subset of violations that must reject a spec (`validateViewSpec` gates on these). */
+export function hardViolations(
+  violations: readonly CompositionViolation[],
+): CompositionViolation[] {
+  return violations.filter((violation) => violation.severity === "violation");
 }
 
 /** Resolves a widget definition by its type id (e.g. `WidgetCatalog.getWidget`). */
@@ -156,7 +184,23 @@ export function validateComposition(
   resolveDefinition: CompositionDefinitionResolver,
 ): CompositionViolation[] {
   const violations: CompositionViolation[] = [];
+  const report = (
+    rule: CompositionRule,
+    message: string,
+    context: { hostWidgetId?: string; slotId?: string } = {},
+  ): void => {
+    const violation: CompositionViolation = {
+      rule,
+      severity: COMPOSITION_RULE_SEVERITY[rule],
+      message,
+    };
+    if (context.hostWidgetId !== undefined) violation.hostWidgetId = context.hostWidgetId;
+    if (context.slotId !== undefined) violation.slotId = context.slotId;
+    violations.push(violation);
+  };
+
   const bindings = spec.composition ?? [];
+  // §8: composition rules run only when the surface declares composition at all.
   if (bindings.length === 0) return violations;
 
   const byHost = new Map<string, SlotBinding[]>();
@@ -169,70 +213,61 @@ export function validateComposition(
   const rootIds = new Set(spec.widgets.map((widget) => widget.id));
   for (const hostId of byHost.keys()) {
     if (!rootIds.has(hostId)) {
-      violations.push({
-        rule: "V2",
-        hostWidgetId: hostId,
-        message: `composition binds to "${hostId}", which is not a widget instance on this surface`,
-      });
+      report("V2", `composition binds to "${hostId}", which is not a widget instance on this surface`, { hostWidgetId: hostId });
     }
   }
 
   const seenBindings = new Set<string>();
 
-  const visit = (host: WidgetInstance, depth: number, path: readonly string[]): void => {
+  /**
+   * `inheritedEnvelope` is the effective envelope of the ancestor chain. Carrying it (rather
+   * than reading only `host.envelope`) is what closes the V7 escape: an occupant that declares
+   * no envelope inherits its host's, so ITS occupants must still be measured against it.
+   * Without the parameter, one intermediate host omitting `envelope` let a `live` grandchild
+   * sit under a `demo` root — the claim simply vanished from the path.
+   */
+  const visit = (
+    host: WidgetInstance,
+    depth: number,
+    path: readonly string[],
+    inheritedEnvelope?: EpistemicClaim,
+  ): void => {
     const hostBindings = byHost.get(host.id) ?? [];
-    if (hostBindings.length === 0) return;
-
     const definition = resolveDefinition(host.widget.type);
     if (!definition) {
-      violations.push({
-        rule: "V2",
-        hostWidgetId: host.id,
-        message: `host "${host.id}" has no resolvable widget definition (type "${host.widget.type}")`,
-      });
+      if (hostBindings.length > 0) {
+        report("V2", `host "${host.id}" has no resolvable widget definition (type "${host.widget.type}")`, { hostWidgetId: host.id });
+      }
       return;
     }
 
     const schema = definition.composition;
     if (!schema) {
-      violations.push({
-        rule: "V1",
-        hostWidgetId: host.id,
-        message: `host "${host.id}" (${host.widget.type}) declares no CompositionSchema but carries ${hostBindings.length} binding(s)`,
-      });
+      if (hostBindings.length > 0) {
+        report("V1", `host "${host.id}" (${host.widget.type}) declares no CompositionSchema but carries ${hostBindings.length} binding(s)`, { hostWidgetId: host.id });
+      }
       return;
     }
 
     const slots = slotLookup(schema);
     if (slots.size !== schema.slots.length) {
-      violations.push({
-        rule: "V2",
-        hostWidgetId: host.id,
-        message: `host "${host.id}" declares duplicate slot ids`,
-      });
+      report("V2", `host "${host.id}" declares duplicate slot ids`, { hostWidgetId: host.id });
     }
 
     const maxDepth = schema.maxDepth ?? DEFAULT_MAX_COMPOSITION_DEPTH;
     const occupantDepth = depth + 1;
-    if (occupantDepth > maxDepth) {
-      violations.push({
-        rule: "V6",
-        hostWidgetId: host.id,
-        message: `occupancy depth ${occupantDepth} exceeds maxDepth ${maxDepth} on host "${host.id}"`,
-      });
+    if (hostBindings.length > 0 && occupantDepth > maxDepth) {
+      report("V6", `occupancy depth ${occupantDepth} exceeds maxDepth ${maxDepth} on host "${host.id}"`, { hostWidgetId: host.id });
     }
 
+    // The claim this host can actually defend: its own, weakened by everything above it.
+    const hostEnvelope = weakestClaim([inheritedEnvelope, host.envelope]);
     const counts = new Map<string, number>();
 
     for (const binding of hostBindings) {
       const slot = slots.get(binding.slotId);
       if (!slot) {
-        violations.push({
-          rule: "V1",
-          hostWidgetId: host.id,
-          slotId: binding.slotId,
-          message: `host "${host.id}" does not declare slot "${binding.slotId}"`,
-        });
+        report("V1", `host "${host.id}" does not declare slot "${binding.slotId}"`, { hostWidgetId: host.id, slotId: binding.slotId });
         continue;
       }
 
@@ -241,12 +276,7 @@ export function validateComposition(
 
       // V4 — capability acceptance.
       if (slot.accepts !== "*" && !slot.accepts.includes(occupant.widget.contract)) {
-        violations.push({
-          rule: "V4",
-          hostWidgetId: host.id,
-          slotId: slot.id,
-          message: `slot "${slot.id}" accepts [${slot.accepts.join(", ")}] but occupant "${occupant.id}" provides ${occupant.widget.contract}`,
-        });
+        report("V4", `slot "${slot.id}" accepts [${slot.accepts.join(", ")}] but occupant "${occupant.id}" provides ${occupant.widget.contract}`, { hostWidgetId: host.id, slotId: slot.id });
       }
 
       // Identity is the INSTANCE id throughout: two DataTables share `widget.id`, so keying
@@ -255,68 +285,41 @@ export function validateComposition(
       // V5 — acyclic occupancy. A detected cycle must STOP descent: recording the violation
       // and then recursing anyway is unbounded recursion, not a report.
       if (occupant.id === host.id || path.includes(occupant.id)) {
-        violations.push({
-          rule: "V5",
-          hostWidgetId: host.id,
-          slotId: slot.id,
-          message: `occupant "${occupant.id}" is already an ancestor of host "${host.id}" (cycle)`,
-        });
+        report("V5", `occupant "${occupant.id}" is already an ancestor of host "${host.id}" (cycle)`, { hostWidgetId: host.id, slotId: slot.id });
         continue;
       }
 
       // V2 — the same occupant bound twice to the same slot.
       const bindingKey = `${host.id}|${slot.id}|${occupant.id}`;
       if (seenBindings.has(bindingKey)) {
-        violations.push({
-          rule: "V2",
-          hostWidgetId: host.id,
-          slotId: slot.id,
-          message: `occupant "${occupant.id}" is bound twice to slot "${slot.id}" on host "${host.id}"`,
-        });
+        report("V2", `occupant "${occupant.id}" is bound twice to slot "${slot.id}" on host "${host.id}"`, { hostWidgetId: host.id, slotId: slot.id });
       } else {
         seenBindings.add(bindingKey);
       }
 
-      // V7 — envelope monotonicity: an occupant may not claim more than its host.
-      if (host.envelope && occupant.envelope) {
-        if (claimStrength(occupant.envelope) > claimStrength(host.envelope)) {
-          violations.push({
-            rule: "V7",
-            hostWidgetId: host.id,
-            slotId: slot.id,
-            message: `occupant "${occupant.id}" claims "${occupant.envelope}" inside host "${host.id}" claiming "${host.envelope}": an occupant may not claim a stronger envelope than its host`,
-          });
-        }
+      // V7 — envelope monotonicity against the EFFECTIVE host claim. An occupant that declares
+      // no envelope is not exempt: it inherits `hostEnvelope`, and that inherited claim is
+      // passed down so the next level cannot escape it either.
+      if (occupant.envelope && hostEnvelope && claimStrength(occupant.envelope) > claimStrength(hostEnvelope)) {
+        const inheritedNote = host.envelope || !inheritedEnvelope
+          ? ""
+          : ` (inherited from an ancestor of host "${host.id}")`;
+        report("V7", `occupant "${occupant.id}" claims "${occupant.envelope}" inside host "${host.id}" claiming "${hostEnvelope}"${inheritedNote}: an occupant may not claim a stronger envelope than its host`, { hostWidgetId: host.id, slotId: slot.id });
       }
 
       // V8 — renderer compatibility.
       const rendererKind = slot.rendererKind ?? "react";
       if (rendererKind === "react") {
         if (occupant.renderer) {
-          violations.push({
-            rule: "V8",
-            hostWidgetId: host.id,
-            slotId: slot.id,
-            message: `slot "${slot.id}" is a react slot but occupant "${occupant.id}" supplies a ${occupant.renderer.kind} renderer`,
-          });
+          report("V8", `slot "${slot.id}" is a react slot but occupant "${occupant.id}" supplies a ${occupant.renderer.kind} renderer`, { hostWidgetId: host.id, slotId: slot.id });
         }
       } else if (!occupant.renderer) {
-        violations.push({
-          rule: "V8",
-          hostWidgetId: host.id,
-          slotId: slot.id,
-          message: `slot "${slot.id}" requires a ${rendererKind} renderer but occupant "${occupant.id}" supplies none`,
-        });
+        report("V8", `slot "${slot.id}" requires a ${rendererKind} renderer but occupant "${occupant.id}" supplies none`, { hostWidgetId: host.id, slotId: slot.id });
       } else if (occupant.renderer.kind !== rendererKind) {
-        violations.push({
-          rule: "V8",
-          hostWidgetId: host.id,
-          slotId: slot.id,
-          message: `slot "${slot.id}" requires a ${rendererKind} renderer but occupant "${occupant.id}" supplies ${occupant.renderer.kind}`,
-        });
+        report("V8", `slot "${slot.id}" requires a ${rendererKind} renderer but occupant "${occupant.id}" supplies ${occupant.renderer.kind}`, { hostWidgetId: host.id, slotId: slot.id });
       }
 
-      visit(occupant, occupantDepth, [...path, host.id]);
+      visit(occupant, occupantDepth, [...path, host.id], hostEnvelope);
     }
 
     // V3 — cardinality, evaluated per declared slot.
@@ -324,21 +327,27 @@ export function validateComposition(
       const slot = slots.get(slotId);
       if (!slot) continue;
       if (slot.cardinality === "one" && count !== 1) {
-        violations.push({
-          rule: "V3",
-          hostWidgetId: host.id,
-          slotId,
-          message: `slot "${slotId}" is cardinality "one" but has ${count} occupant(s)`,
-        });
+        report("V3", `slot "${slotId}" is cardinality "one" but has ${count} occupant(s)`, { hostWidgetId: host.id, slotId });
       }
       if (slot.cardinality === "optional" && count > 1) {
-        violations.push({
-          rule: "V3",
-          hostWidgetId: host.id,
-          slotId,
-          message: `slot "${slotId}" is cardinality "optional" but has ${count} occupants`,
-        });
+        report("V3", `slot "${slotId}" is cardinality "optional" but has ${count} occupants`, { hostWidgetId: host.id, slotId });
       }
+    }
+
+    // V9 — every required slot is filled, or it explicitly degrades (§7.2). This is REPORTED,
+    // never a rejection: the resolver turns the gap into a named caption and the surface
+    // still renders (§8). A host with no bindings at all is checked too — its required slots
+    // are just as unfilled as one missing a single binding.
+    const reported = new Set<string>();
+    for (const descriptor of schema.slots) {
+      if (!descriptor.required || reported.has(descriptor.id)) continue;
+      if ((counts.get(descriptor.id) ?? 0) > 0) continue;
+      reported.add(descriptor.id);
+      report(
+        "V9",
+        `required slot "${descriptor.id}" on host "${host.id}" (${host.widget.type}) has no occupant; it resolves to a degraded placeholder and the surface still renders`,
+        { hostWidgetId: host.id, slotId: descriptor.id },
+      );
     }
   };
 
@@ -371,6 +380,8 @@ export function resolveSlots(
   host: WidgetInstance,
   schema: CompositionSchema,
   bindings: readonly SlotBinding[],
+  /** Effective envelope of the ancestor chain; see the V7 note in `validateComposition`. */
+  inheritedEnvelope?: EpistemicClaim,
 ): ResolvedSlot[] {
   const forHost = bindings.filter((binding) => binding.hostWidgetId === host.id);
 
@@ -394,7 +405,11 @@ export function resolveSlots(
       resolved.caption = `Missing required slot "${descriptor.id}" on ${host.widget.type} (${host.id})`;
     }
 
-    const envelope = weakestClaim([host.envelope, ...occupants.map((o) => o.envelope)]);
+    const envelope = weakestClaim([
+      inheritedEnvelope,
+      host.envelope,
+      ...occupants.map((o) => o.envelope),
+    ]);
     if (envelope) resolved.effectiveEnvelope = envelope;
 
     return resolved;
