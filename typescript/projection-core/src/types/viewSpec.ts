@@ -1,5 +1,7 @@
 import { CapabilityId, PriorityLevel, HierarchySetting, DensitySetting } from "./designIR";
 import { CapabilityContract, SurfaceContextContract } from "./capabilities";
+import { hardViolations, validateComposition } from "./composition";
+import type { CompositionDefinitionResolver, EpistemicClaim, RendererRef, SlotBinding } from "./composition";
 
 /**
  * ArtifactIdentity — governance provenance applied to compiled artifacts.
@@ -24,6 +26,16 @@ export interface WidgetInstance {
   contract: CapabilityContract;
   widget: Widget;
   role?: string;
+  /**
+   * Provenance claim carried by this instance (record d43a8d6d A1).
+   * Enables V7 envelope monotonicity: an occupant may not claim more than its host.
+   */
+  envelope?: EpistemicClaim;
+  /**
+   * Imperative renderer ref for occupancy in a `canvas2d`/`webgl` slot (record d43a8d6d §6).
+   * A ref, never the adapter: the AST stays serializable and content-addressable.
+   */
+  renderer?: RendererRef;
 }
 
 export type Region = "main" | "sidebar" | "footer" | "header" | "overlay";
@@ -146,6 +158,11 @@ export interface ViewSpec extends Partial<ArtifactIdentity> {
   events: EventRoute[];
   fixtures?: FixtureOverrides;
   context?: SurfaceContextContract;
+  /**
+   * Slot composition (record d43a8d6d). Omitted = flat surface, which validates exactly as
+   * before. Emitted by the compiler (Q1: compile-time graph), never assembled at runtime.
+   */
+  composition?: SlotBinding[];
 }
 
 /**
@@ -166,9 +183,14 @@ export interface MultiSurfaceViewSpec {
  * Guards the canonical Invariant that a ViewSpec is a well-formed program AST
  * with optional ArtifactIdentity provenance attached.
  */
-export function validateViewSpec(spec: unknown): spec is ViewSpec {
+export function validateViewSpec(
+  spec: unknown,
+  resolveDefinition?: CompositionDefinitionResolver,
+): spec is ViewSpec {
   if (!spec || typeof spec !== "object") return false;
   const value = spec as Partial<ViewSpec>;
+  const compositionValid = value.composition === undefined || Array.isArray(value.composition);
+  if (!compositionValid) return false;
   return (value.schemaVersion === undefined || value.schemaVersion === 1)
     && typeof value.id === "string"
     && (value.artifactId === undefined || typeof value.artifactId === "string")
@@ -177,5 +199,12 @@ export function validateViewSpec(spec: unknown): spec is ViewSpec {
     && Array.isArray(value.layout?.nodes)
     && Array.isArray(value.widgets)
     && Array.isArray(value.adapters)
-    && Array.isArray(value.events);
+    && Array.isArray(value.events)
+    // Composition rules (V1–V9) only run when a definition resolver is supplied: they need
+    // the hosts' declared schemas. Structural checks above stay resolver-free. Only hard
+    // violations reject: V9 reports an unfilled required slot that renders a placeholder,
+    // and §8 requires the surface to still render (§8 "validation reports, and the surface
+    // still renders").
+    && (resolveDefinition === undefined
+      || hardViolations(validateComposition(value as ViewSpec, resolveDefinition)).length === 0);
 }

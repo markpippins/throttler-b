@@ -408,15 +408,39 @@ Renders continuous time-series data with hover tooltips and range zoom.`,
 };
 
 /**
- * Resolves documentation entry for given runtime targets
+ * Path-specific documentation, keyed by the composition tag path
+ * (`surface:{id}/widget:{root}/slot:{slot}/widget:{occupant}` — record d43a8d6d §9).
+ * Empty by default: capability entries below remain the effective corpus, so per-widget and
+ * per-context content is strictly additive.
  */
-export function resolveDocumentation(target: {
+export const PATH_DOCUMENTATION_REGISTRY: DocumentationRegistry = {};
+
+export interface DocumentationTarget {
   capabilityId?: string;
   widgetType?: string;
   surfaceId?: string;
   roleId?: string;
   workflowId?: string;
-}): DocumentationEntry {
+  /** Composition address; resolved BEFORE the capability entry when both exist. */
+  tagPath?: string;
+}
+
+/**
+ * Resolves documentation entry for given runtime targets.
+ *
+ * Precedence: path-specific → capability → generic fallback. This extends the shipped chain
+ * rather than replacing it, which is what lets widget-level docs (hover / verbose / speech)
+ * arrive without re-keying the ten existing capability entries.
+ */
+export function resolveDocumentation(
+  target: DocumentationTarget,
+  pathRegistry: DocumentationRegistry = PATH_DOCUMENTATION_REGISTRY,
+): DocumentationEntry {
+  if (target.tagPath) {
+    const byPath = pathRegistry[target.tagPath];
+    if (byPath) return byPath;
+  }
+
   if (target.capabilityId) {
     const entry = CANONICAL_DOCUMENTATION_REGISTRY[target.capabilityId];
     if (entry) return entry;
