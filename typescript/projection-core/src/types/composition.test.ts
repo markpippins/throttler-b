@@ -19,7 +19,11 @@ import {
   weakestClaim,
 } from "./composition.js";
 import { WidgetCatalog, type WidgetDefinition } from "../widget/catalog.js";
-import { SERVICEDOMAIN_RUNTIME_CATALOG, registerPinnedHosts } from "../widget/hostDefinitions.js";
+import {
+  ATLAS_TOPOLOGY_CANVAS,
+  SERVICEDOMAIN_RUNTIME_CATALOG,
+  registerPinnedHosts,
+} from "../widget/hostDefinitions.js";
 import { validateViewSpec } from "./viewSpec.js";
 
 function ok(condition: unknown, message: string): asserts condition {
@@ -121,7 +125,10 @@ export function runCompositionConformance(): { allPassed: boolean; logs: string[
   equal(v9Servers[0]?.severity, "degraded", "V9 is reported as degraded, not as a rejection");
   equal(v9Servers[0]?.slotId, "servers", "V9 names the unfilled slot");
   equal(v9Servers[0]?.hostWidgetId, "catalog-1", "V9 names the host");
-  ok(v9Servers[0]?.message.includes("degraded placeholder"), "V9 says the slot renders a placeholder");
+  const serversCaption = servers.caption;
+  ok(serversCaption, "a degraded slot always carries a caption");
+  ok(v9Servers[0]?.message.includes(serversCaption), "V9 quotes the resolver's caption verbatim, so report and placeholder cannot drift");
+  ok(v9Servers[0]?.message.includes("surface still renders"), "V9 says the surface still renders");
   equal(hardViolations(missingViolations).length, 0, "V9 contributes no hard violation");
   ok(validateViewSpec(missingServers, resolve), "V9 does not reject the spec: the surface still renders");
 
@@ -288,11 +295,29 @@ export function runCompositionConformance(): { allPassed: boolean; logs: string[
   equal(zeroBoundV9.map((violation) => violation.slotId).join(","), "nodes,edges", "V9 lists the required slots in declaration order");
   ok(validateViewSpec(surface([host, unboundAtlas], catalogBindings), resolve), "an entirely unbound pinned host does not reject the surface");
 
+  // Derivation, not duplication: V9's slot ids must be exactly the slots resolution marks
+  // `degraded-missing` for the same host and bindings. If the two predicates ever diverge,
+  // the report and the placeholder disagree — this compares them directly.
+  const atlasGaps = resolveSlots(unboundAtlas, ATLAS_TOPOLOGY_CANVAS.composition!, catalogBindings)
+    .filter((slot) => slot.status === "degraded-missing")
+    .map((slot) => slot.slotId);
+  equal(zeroBoundV9.map((violation) => violation.slotId).join(","), atlasGaps.join(","), "V9 slot ids are exactly the resolver's degraded slots");
+  ok(zeroBoundV9.every((violation) => violation.message.includes(`"${violation.slotId}"`)), "each V9 names its slot through the resolver caption");
+
+  const nestedBindings = [bind("catalog-1", "systems", unboundAtlas)];
   const nestedUnfilled = validateComposition(
-    surface([host], [bind("catalog-1", "systems", unboundAtlas)]),
+    surface([host], nestedBindings),
     resolve,
   ).filter((violation) => violation.rule === "V9");
   ok(nestedUnfilled.some((violation) => violation.hostWidgetId === "atlas-unbound"), "V9 reaches a nested host, not only roots");
+  const nestedGaps = resolveSlots(unboundAtlas, ATLAS_TOPOLOGY_CANVAS.composition!, nestedBindings)
+    .filter((slot) => slot.status === "degraded-missing")
+    .map((slot) => slot.slotId);
+  equal(
+    nestedUnfilled.filter((violation) => violation.hostWidgetId === "atlas-unbound").map((violation) => violation.slotId).join(","),
+    nestedGaps.join(","),
+    "a nested host's V9 report is also exactly its resolution gaps",
+  );
   logs.push("V9: unbound and nested hosts report unfilled required slots without rejecting");
 
   // ── V8: renderer compatibility ─────────────────────────────────────

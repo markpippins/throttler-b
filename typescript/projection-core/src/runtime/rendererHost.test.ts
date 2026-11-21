@@ -8,6 +8,7 @@
 import type { EpistemicClaim } from "../types/composition.js";
 import {
   RendererAdapterRegistry,
+  RendererSlotBridge,
   RendererSlotHost,
   requiresImperativeRenderer,
   type ImperativeRenderer,
@@ -108,6 +109,47 @@ export function runRendererHostConformance(): { allPassed: boolean; logs: string
   lateHost.setStateToken("demo");
   lateHost.mount({ adapterId: "r-late", kind: "canvas2d" }, container, {});
   equal(lateSpy.tokens.join(","), "demo", "pre-mount token applied on mount");
+
+  // ── Bridge: the React ref-callback path drives the same lifecycle ──
+  const bridgeSpy: StubSpy = { mounts: 0, updates: [], disposes: 0, tokens: [], lastContainer: undefined };
+  const bridgeRegistry = new RendererAdapterRegistry();
+  bridgeRegistry.register(stubAdapter("r-bridge", "webgl", bridgeSpy));
+  const bridge = new RendererSlotBridge(
+    bridgeRegistry,
+    { adapterId: "r-bridge", kind: "webgl" },
+    { nodeCount: 2 },
+  );
+  const bridgeContainer = { tagName: "DIV" };
+  const secondContainer = { tagName: "CANVAS" };
+
+  bridge.setStateToken("unknown");
+  equal(bridge.isMounted, false, "bridge starts unmounted");
+  equal(bridge.attach(bridgeContainer), true, "bridge mounts when a React node attaches");
+  equal(bridgeSpy.mounts, 1, "bridge mounts the adapter once");
+  equal(bridgeSpy.lastContainer, bridgeContainer, "bridge passes the React node to the adapter");
+  equal(bridgeSpy.tokens.join(","), "unknown", "a token set before attach is re-applied on mount");
+  equal(bridge.currentToken, "unknown", "bridge records the slot token");
+
+  equal(bridge.attach(bridgeContainer), true, "re-attaching the same live node is a no-op");
+  equal(bridgeSpy.mounts, 1, "the same container does not remount");
+
+  bridge.attach(null);
+  equal(bridgeSpy.disposes, 1, "detach disposes the adapter");
+  equal(bridge.isMounted, false, "bridge reports unmounted after detach");
+  bridge.attach(null);
+  equal(bridgeSpy.disposes, 1, "repeated detach is idempotent");
+
+  bridge.attach(bridgeContainer);
+  equal(bridgeSpy.mounts, 2, "re-attaching after detach mounts again");
+  bridge.attach(secondContainer);
+  equal(bridgeSpy.disposes, 2, "a new container disposes the previous occupancy");
+  equal(bridgeSpy.mounts, 3, "a new container mounts the adapter for that node");
+  equal(bridgeSpy.lastContainer, secondContainer, "the adapter receives the replacement node");
+
+  const unresolvedBridge = new RendererSlotBridge(bridgeRegistry, { adapterId: "r-bridge", kind: "canvas2d" });
+  equal(unresolvedBridge.attach(bridgeContainer), false, "an unresolved ref does not mount");
+  equal(unresolvedBridge.isMounted, false, "an unresolved ref leaves the bridge unmounted");
+  logs.push("bridge: ref attach/detach drives mount/token/dispose without remounting a live node");
 
   equal(requiresImperativeRenderer("webgl"), true, "webgl requires an imperative renderer");
   equal(requiresImperativeRenderer("react"), false, "react does not");

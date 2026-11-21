@@ -10,8 +10,10 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  ATLAS_TOPOLOGY_CANVAS,
   EPISTEMIC_CLAIMS,
   PATH_DOCUMENTATION_REGISTRY,
+  RendererAdapterRegistry,
   SERVICEDOMAIN_RUNTIME_CATALOG,
   WidgetCatalog,
   registerPinnedHosts,
@@ -120,6 +122,45 @@ export function runSlotCompositionConformance(): { allPassed: boolean; logs: str
   assert(partialMarkup.includes('&quot;servers&quot;') || partialMarkup.includes('"servers"'), 'caption names the missing slot');
   equal(countOccurrences(partialMarkup, 'data-status="filled"'), 3, 'remaining slots still render filled');
   logs.push('AC4: unfilled required slot renders a named caption instead of nothing');
+
+  // ── §6: renderer slots are wired into RendererSlotHost, not inert markup ──
+  const atlas = instance('atlas-1', 'AtlasTopologyCanvas', 'InspectorPanel');
+  const atlasSchema = ATLAS_TOPOLOGY_CANVAS.composition;
+  assert(atlasSchema, 'atlas declares a CompositionSchema');
+  const nodeOccupant: WidgetInstance = {
+    ...instance('node-webgl', 'DataTable', 'EntityCollection'),
+    renderer: { adapterId: 'r-3d', kind: 'webgl' },
+  };
+  const edgeOccupant: WidgetInstance = {
+    ...instance('edge-webgl', 'DataTable', 'EntityCollection'),
+    renderer: { adapterId: 'r-3d', kind: 'webgl' },
+  };
+  const atlasBindings = [
+    bind('atlas-1', 'nodes', nodeOccupant),
+    bind('atlas-1', 'edges', edgeOccupant),
+  ];
+  const atlasSlots = resolveSlots(atlas, atlasSchema, atlasBindings);
+  equal(
+    validateComposition({ ...spec, id: 'surface-atlas', widgets: [atlas], composition: atlasBindings }, resolver).length,
+    0,
+    'atlas renderer composition is valid',
+  );
+
+  const wiredMarkup = renderToStaticMarkup(
+    createElement(SlotHost, {
+      hostWidgetId: atlas.id,
+      slots: atlasSlots,
+      rendererRegistry: new RendererAdapterRegistry(),
+    }),
+  );
+  equal(countOccurrences(wiredMarkup, 'data-renderer-mount="r-3d"'), 2, 'both webgl occupants expose a mount node');
+  equal(countOccurrences(wiredMarkup, 'data-renderer-wired="true"'), 2, 'renderer slots are wired to RendererSlotBridge');
+
+  const unwiredMarkup = renderToStaticMarkup(
+    createElement(SlotHost, { hostWidgetId: atlas.id, slots: atlasSlots }),
+  );
+  equal(countOccurrences(unwiredMarkup, 'data-renderer-wired="false"'), 2, 'without a registry the mount node is inert rather than pretending to be wired');
+  logs.push('§6: SlotHost routes renderer occupants through RendererSlotBridge');
 
   // ── AC7: path-specific docs beat capability docs ───────────────────
   const tagPath = 'surface:surface-catalog/widget:catalog-1/slot:systems/widget:tbl-systems';

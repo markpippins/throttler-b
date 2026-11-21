@@ -100,6 +100,72 @@ export class RendererSlotHost {
   }
 }
 
+/**
+ * Connects a React host's mount node to one imperative occupancy.
+ *
+ * `RendererSlotHost` owns the GPU lifecycle but speaks `mount(ref, container, props)`. A React
+ * renderer only has a ref callback, which fires with the node on attach and `null` on detach.
+ * This bridge is that adapter, so `SlotHost` can hand a renderer slot's container over without
+ * duplicating dispose/token bookkeeping — and `null` reliably disposes rather than leaking.
+ */
+export class RendererSlotBridge {
+  private readonly host: RendererSlotHost;
+  private container?: unknown;
+  /**
+   * The slot's claim is remembered here because `RendererSlotHost.dispose()` clears its own
+   * token; a container swap must not silently drop the treatment it was told to carry.
+   */
+  private token?: EpistemicClaim;
+
+  constructor(
+    registry: RendererAdapterRegistry,
+    private readonly ref: RendererRef,
+    private readonly props: Record<string, unknown> = {},
+  ) {
+    this.host = new RendererSlotHost(registry);
+  }
+
+  /**
+   * React ref callback. Re-attaching the same live container is a no-op, a new container
+   * replaces the previous occupancy, and `null` disposes.
+   *
+   * @returns whether the occupancy is mounted (false for `null` or an unresolved ref).
+   */
+  attach(container: unknown): boolean {
+    if (container === null || container === undefined) {
+      this.dispose();
+      return false;
+    }
+    if (this.container === container && this.host.isMounted) return true;
+
+    this.host.dispose();
+    this.container = container;
+    // `mount` re-applies whatever the host holds, so restoring it first keeps a token set
+    // before attach (or before a container swap) intact.
+    if (this.token !== undefined) this.host.setStateToken(this.token);
+    return this.host.mount(this.ref, container, this.props);
+  }
+
+  /** Routes the slot's effective claim to the adapter (§6). Safe before `attach`. */
+  setStateToken(token: EpistemicClaim): void {
+    this.token = token;
+    this.host.setStateToken(token);
+  }
+
+  get isMounted(): boolean {
+    return this.host.isMounted;
+  }
+
+  get currentToken(): EpistemicClaim | undefined {
+    return this.host.currentToken;
+  }
+
+  dispose(): void {
+    this.host.dispose();
+    this.container = undefined;
+  }
+}
+
 /** `"react"` slots are occupied by components; this guards the imperative branch only. */
 export function requiresImperativeRenderer(kind: RendererKind | undefined): boolean {
   return kind === "canvas2d" || kind === "webgl";

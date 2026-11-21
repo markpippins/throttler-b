@@ -335,19 +335,18 @@ export function validateComposition(
     }
 
     // V9 — every required slot is filled, or it explicitly degrades (§7.2). This is REPORTED,
-    // never a rejection: the resolver turns the gap into a named caption and the surface
-    // still renders (§8). A host with no bindings at all is checked too — its required slots
-    // are just as unfilled as one missing a single binding.
+    // never a rejection: the surface still renders (§8). The report is DERIVED from
+    // `resolveSlots` rather than re-deciding "is this filled?" here, and it quotes the
+    // resolver's own caption — so the report and the placeholder the host renders are the
+    // same computation and cannot drift apart.
     const reported = new Set<string>();
-    for (const descriptor of schema.slots) {
-      if (!descriptor.required || reported.has(descriptor.id)) continue;
-      if ((counts.get(descriptor.id) ?? 0) > 0) continue;
-      reported.add(descriptor.id);
-      report(
-        "V9",
-        `required slot "${descriptor.id}" on host "${host.id}" (${host.widget.type}) has no occupant; it resolves to a degraded placeholder and the surface still renders`,
-        { hostWidgetId: host.id, slotId: descriptor.id },
-      );
+    for (const resolved of resolveSlots(host, schema, bindings, inheritedEnvelope)) {
+      if (resolved.status !== "degraded-missing" || reported.has(resolved.slotId)) continue;
+      reported.add(resolved.slotId);
+      report("V9", `${resolved.caption}; the surface still renders (§7.2)`, {
+        hostWidgetId: host.id,
+        slotId: resolved.slotId,
+      });
     }
   };
 
@@ -360,16 +359,23 @@ export function validateComposition(
 
 export type ResolvedSlotStatus = "filled" | "empty" | "degraded-missing";
 
-export interface ResolvedSlot {
+interface ResolvedSlotBase {
   slotId: string;
   descriptor: SlotDescriptor;
   occupants: WidgetInstance[];
-  status: ResolvedSlotStatus;
-  /** Present when `status === "degraded-missing"` — names the slot, never silent (§7.2). */
-  caption?: string;
   /** Weakest claim among host and occupants (§7.1). */
   effectiveEnvelope?: EpistemicClaim;
 }
+
+/**
+ * `caption` is part of the `degraded-missing` variant, not an optional field, so a caller can
+ * read it without a fallback — the type itself says a gap always names itself (§7.2).
+ */
+export type ResolvedSlot = ResolvedSlotBase &
+  (
+    | { status: Exclude<ResolvedSlotStatus, "degraded-missing">; caption?: undefined }
+    | { status: "degraded-missing"; caption: string }
+  );
 
 /**
  * Resolves a host's declared slots against the bindings for that host. Declaration order is
@@ -385,7 +391,7 @@ export function resolveSlots(
 ): ResolvedSlot[] {
   const forHost = bindings.filter((binding) => binding.hostWidgetId === host.id);
 
-  return schema.slots.map((descriptor) => {
+  return schema.slots.map((descriptor): ResolvedSlot => {
     const occupants = forHost
       .filter((binding) => binding.slotId === descriptor.id)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -394,25 +400,23 @@ export function resolveSlots(
     const status: ResolvedSlotStatus =
       occupants.length > 0 ? "filled" : descriptor.required ? "degraded-missing" : "empty";
 
-    const resolved: ResolvedSlot = {
-      slotId: descriptor.id,
-      descriptor,
-      occupants,
-      status,
-    };
-
-    if (status === "degraded-missing") {
-      resolved.caption = `Missing required slot "${descriptor.id}" on ${host.widget.type} (${host.id})`;
-    }
-
+    const base: ResolvedSlotBase = { slotId: descriptor.id, descriptor, occupants };
     const envelope = weakestClaim([
       inheritedEnvelope,
       host.envelope,
       ...occupants.map((o) => o.envelope),
     ]);
-    if (envelope) resolved.effectiveEnvelope = envelope;
+    if (envelope) base.effectiveEnvelope = envelope;
 
-    return resolved;
+    if (status === "degraded-missing") {
+      return {
+        ...base,
+        status,
+        caption: `Missing required slot "${descriptor.id}" on ${host.widget.type} (${host.id})`,
+      };
+    }
+
+    return { ...base, status };
   });
 }
 

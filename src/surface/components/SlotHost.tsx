@@ -1,6 +1,11 @@
 import React from 'react';
 
-import type { ResolvedSlot, WidgetInstance } from '../../../typescript/projection-core/src/index';
+import {
+  RendererSlotBridge,
+  type RendererAdapterRegistry,
+  type ResolvedSlot,
+  type WidgetInstance,
+} from '../../../typescript/projection-core/src/index';
 import { globalThemeRegistry, type StateTokenTreatment, type ThemeDefinition } from '../core/themeRegistry';
 
 /**
@@ -8,9 +13,9 @@ import { globalThemeRegistry, type StateTokenTreatment, type ThemeDefinition } f
  *
  * A host owns its interior layout: this component renders the host's RESOLVED slots in the
  * declaration order `resolveSlots` preserves, never a flat list of widgets. It is the React
- * half of the contract; a `rendererKind: "canvas2d" | "webgl"` slot instead exposes a mount
- * point that `RendererSlotHost` drives imperatively (§6) — a ReactNode cannot live inside a
- * Three.js frame loop.
+ * half of the contract; a `rendererKind: "canvas2d" | "webgl"` slot instead mounts through
+ * `RendererSlotBridge` into a `RendererSlotHost` (§6) — a ReactNode cannot live inside a
+ * Three.js frame loop, so the adapter gets the container and the slot's state token.
  *
  * Two rendering obligations are non-negotiable here:
  *   - a required slot with no occupant renders its named caption, never nothing (§7.2);
@@ -26,13 +31,52 @@ export interface SlotHostProps {
   /** Renders one occupant. Defaults to a labelled placeholder naming type and instance. */
   renderOccupant?: (occupant: WidgetInstance, slot: ResolvedSlot) => React.ReactNode;
   /**
-   * Imperative bridge. Called with the mount element for a `renderer`-slot occupant
-   * (`"<slotId>:<occupantId>"`) and again with `null` on unmount, so the caller can hand it
-   * to `RendererSlotHost.mount(...)` / `dispose()` without this component owning GPU state.
+   * Adapters available to `renderer` slots. When supplied, each renderer occupant's mount
+   * node is driven by a `RendererSlotBridge` (mount → token → dispose); when omitted the
+   * mount node is rendered unwired for a host that owns its own canvas.
    */
-  rendererTarget?: (key: string, container: HTMLDivElement | null) => void;
+  rendererRegistry?: RendererAdapterRegistry;
   className?: string;
 }
+
+/**
+ * One renderer occupant's mount point. `RendererSlotBridge` owns the lifecycle, so a token
+ * change is a token update rather than a remount, and detaching disposes the adapter.
+ */
+const SlotRendererMount: React.FC<{
+  registry?: RendererAdapterRegistry;
+  slot: ResolvedSlot;
+  occupant: WidgetInstance;
+}> = ({ registry, slot, occupant }) => {
+  const mountRef = React.useRef<HTMLDivElement | null>(null);
+
+  const bridge = React.useMemo(() => {
+    if (!registry || !occupant.renderer) return undefined;
+    return new RendererSlotBridge(registry, occupant.renderer);
+  }, [registry, occupant.id, occupant.renderer?.adapterId, occupant.renderer?.kind]);
+
+  React.useEffect(() => {
+    if (!bridge || !slot.effectiveEnvelope) return;
+    bridge.setStateToken(slot.effectiveEnvelope);
+  }, [bridge, slot.effectiveEnvelope]);
+
+  React.useEffect(() => {
+    const node = mountRef.current;
+    if (!bridge || !node) return;
+    bridge.attach(node);
+    return () => bridge.dispose();
+  }, [bridge]);
+
+  return (
+    <div
+      ref={mountRef}
+      data-renderer-mount={occupant.renderer?.adapterId ?? ''}
+      data-renderer-kind={slot.descriptor.rendererKind ?? 'react'}
+      data-renderer-wired={bridge ? 'true' : 'false'}
+      className="min-h-[120px] w-full"
+    />
+  );
+};
 
 function treatmentFor(
   slot: ResolvedSlot,
@@ -46,7 +90,7 @@ export const SlotHost: React.FC<SlotHostProps> = ({
   slots,
   themeId,
   renderOccupant,
-  rendererTarget,
+  rendererRegistry,
   className,
 }) => {
   const theme = globalThemeRegistry.getTheme(themeId);
@@ -110,11 +154,10 @@ export const SlotHost: React.FC<SlotHostProps> = ({
                   className="min-w-0"
                 >
                   {isRendererSlot ? (
-                    <div
-                      data-renderer-mount={occupant.renderer?.adapterId ?? ''}
-                      data-renderer-kind={slot.descriptor.rendererKind ?? 'react'}
-                      className="min-h-[120px] w-full"
-                      ref={(element) => rendererTarget?.(`${slot.slotId}:${occupant.id}`, element)}
+                    <SlotRendererMount
+                      registry={rendererRegistry}
+                      slot={slot}
+                      occupant={occupant}
                     />
                   ) : renderOccupant ? (
                     renderOccupant(occupant, slot)
